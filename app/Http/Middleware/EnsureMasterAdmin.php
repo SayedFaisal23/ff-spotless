@@ -23,7 +23,7 @@ class EnsureMasterAdmin
 
             return redirect()
                 ->route('home')
-                ->withErrors(['password' => 'Akses pentadbir diperlukan.']);
+                ->withErrors(['password' => 'Admin access is required.']);
         }
 
         return $next($request);

@@ -20,6 +20,7 @@ class TaskCompletionService
         private readonly OperationalDate $dates,
         private readonly WeeklyTaskScheduler $weekly,
         private readonly ChecklistMaterializer $materializer,
+        private readonly EvidenceWatermarker $watermarker,
     ) {}
 
     /**
@@ -44,8 +45,11 @@ class TaskCompletionService
                     throw ValidationException::withMessages(['task' => 'Tugasan ini telah selesai dan tidak boleh dibuka semula.']);
                 }
 
+                $completedAt = $this->dates->nowUtc();
+                $watermarkText = $completedAt->setTimezone($this->dates->timezone())->format('d/m/Y H:i');
+
                 foreach ($photos as $photo) {
-                    $stored = $this->storePhoto($photo, $date, 'daily');
+                    $stored = $this->storePhoto($photo, $date, 'daily', $watermarkText);
                     $storedPaths[] = $stored['path'];
                     DailyTaskEvidence::query()->create([
                         'daily_checklist_id' => $locked->id,
@@ -55,7 +59,7 @@ class TaskCompletionService
 
                 $locked->forceFill([
                     'is_completed' => true,
-                    'completed_at' => $this->dates->nowUtc(),
+                    'completed_at' => $completedAt,
                     'completed_by_user_id' => null,
                 ])->save();
             }, 3);
@@ -89,8 +93,11 @@ class TaskCompletionService
                     throw ValidationException::withMessages(['task' => 'Tugasan mingguan ini tidak boleh diselesaikan pada hari ini.']);
                 }
 
+                $completedAt = $this->dates->nowUtc();
+                $watermarkText = $completedAt->setTimezone($this->dates->timezone())->format('d/m/Y H:i');
+
                 foreach ($photos as $photo) {
-                    $stored = $this->storePhoto($photo, $date, 'weekly');
+                    $stored = $this->storePhoto($photo, $date, 'weekly', $watermarkText);
                     $storedPaths[] = $stored['path'];
                     WeeklyTaskEvidence::query()->create([
                         'weekly_task_occurrence_id' => $locked->id,
@@ -100,7 +107,7 @@ class TaskCompletionService
 
                 $locked->forceFill([
                     'status' => 'completed',
-                    'completed_at' => $this->dates->nowUtc(),
+                    'completed_at' => $completedAt,
                     'completed_on' => $date,
                 ])->save();
             }, 3);
@@ -128,32 +135,23 @@ class TaskCompletionService
     /**
      * @return array{disk: string, path: string, mime_type: string, size_bytes: int}
      */
-    private function storePhoto(UploadedFile $photo, string $date, string $type): array
+    private function storePhoto(UploadedFile $photo, string $date, string $type, string $watermarkText): array
     {
-        $mime = (string) $photo->getMimeType();
-        $extensions = [
-            'image/jpeg' => 'jpg',
-            'image/png' => 'png',
-            'image/webp' => 'webp',
-        ];
-
-        if (! isset($extensions[$mime])) {
-            throw ValidationException::withMessages(['photos' => 'Format foto bukti tidak disokong.']);
-        }
+        $watermarked = $this->watermarker->watermark($photo, $watermarkText);
 
         $directory = sprintf('evidence/%s/%s/%s', $date, $type, substr(bin2hex(random_bytes(8)), 0, 2));
-        $filename = bin2hex(random_bytes(24)).'.'.$extensions[$mime];
-        $path = Storage::disk('local')->putFileAs($directory, $photo, $filename);
+        $path = $directory.'/'.bin2hex(random_bytes(24)).'.'.$watermarked['extension'];
+        $written = Storage::disk('local')->put($path, $watermarked['contents']);
 
-        if (! is_string($path) || $path === '') {
+        if (! $written) {
             throw new RuntimeException('Foto bukti tidak dapat disimpan.');
         }
 
         return [
             'disk' => 'local',
             'path' => $path,
-            'mime_type' => $mime,
-            'size_bytes' => (int) $photo->getSize(),
+            'mime_type' => $watermarked['mime_type'],
+            'size_bytes' => $watermarked['size_bytes'],
         ];
     }
 

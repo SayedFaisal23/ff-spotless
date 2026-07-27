@@ -39,18 +39,18 @@ class StoreTaskTemplateRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'task_name.required' => 'Nama tugasan diperlukan.',
-            'task_name.string' => 'Nama tugasan mesti berupa teks.',
-            'task_name.max' => 'Nama tugasan tidak boleh melebihi 255 aksara.',
-            'task_session_id.required' => 'Sesi tugasan diperlukan.',
-            'task_session_id.integer' => 'Sesi tugasan tidak sah.',
-            'task_session_id.exists' => 'Sesi tugasan tidak ditemui.',
-            'credit_hours.required' => 'Jam kredit diperlukan.',
-            'credit_hours.numeric' => 'Jam kredit mesti berupa nombor.',
-            'credit_hours.min' => 'Jam kredit mestilah sekurang-kurangnya 0.25.',
-            'credit_hours.max' => 'Jam kredit tidak boleh melebihi 24.',
-            'credit_hours.decimal' => 'Jam kredit boleh mempunyai maksimum dua tempat perpuluhan.',
-            'credit_hours.multiple_of' => 'Jam kredit mesti dalam gandaan 0.25.',
+            'task_name.required' => 'Task name is required.',
+            'task_name.string' => 'Task name must be text.',
+            'task_name.max' => 'Task name must not exceed 255 characters.',
+            'task_session_id.required' => 'Task session is required.',
+            'task_session_id.integer' => 'Task session is invalid.',
+            'task_session_id.exists' => 'Task session was not found.',
+            'credit_hours.required' => 'Credit hours are required.',
+            'credit_hours.numeric' => 'Credit hours must be a number.',
+            'credit_hours.min' => 'Credit hours must be at least 0.25.',
+            'credit_hours.max' => 'Credit hours must not exceed 24.',
+            'credit_hours.decimal' => 'Credit hours can have at most two decimal places.',
+            'credit_hours.multiple_of' => 'Credit hours must be in 0.25 increments.',
         ];
     }
 }

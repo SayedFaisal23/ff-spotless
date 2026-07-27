@@ -10,6 +10,7 @@ use App\Models\WeeklyTaskOccurrence;
 use App\Models\WeeklyTaskPostponement;
 use App\Models\WeeklyTaskTemplate;
 use App\Services\ChecklistMaterializer;
+use App\Services\EvidenceWatermarker;
 use App\Services\OperationalDate;
 use App\Services\StatisticsService;
 use App\Services\WeeklyTaskScheduler;
@@ -18,6 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class ChecklistWorkflowTest extends TestCase
@@ -190,6 +192,7 @@ class ChecklistWorkflowTest extends TestCase
     public function test_completion_requires_private_image_evidence_and_is_permanent(): void
     {
         Storage::fake('local');
+        $this->fakeWatermarker();
         $task = $this->dailyTask();
         $today = $task->date->toDateString();
 
@@ -216,6 +219,7 @@ class ChecklistWorkflowTest extends TestCase
     public function test_evidence_can_only_be_streamed_by_an_admin(): void
     {
         Storage::fake('local');
+        $this->fakeWatermarker();
         $task = $this->dailyTask();
         $this->post(route('tasks.daily.complete', $task), [
             'date' => $task->date->toDateString(),
@@ -233,6 +237,7 @@ class ChecklistWorkflowTest extends TestCase
     public function test_completed_day_cannot_be_marked_unavailable(): void
     {
         Storage::fake('local');
+        $this->fakeWatermarker();
         $task = $this->dailyTask();
         $date = $task->date->toDateString();
         $this->post(route('tasks.daily.complete', $task), ['date' => $date, 'photos' => [$this->proof()]]);
@@ -309,6 +314,71 @@ class ChecklistWorkflowTest extends TestCase
         $this->assertFalse($task->refresh()->is_completed);
     }
 
+    public function test_completion_fails_cleanly_when_watermarking_is_unavailable(): void
+    {
+        Storage::fake('local');
+        $this->app->instance(EvidenceWatermarker::class, new class extends EvidenceWatermarker
+        {
+            public function watermark(UploadedFile $photo, string $text): array
+            {
+                throw ValidationException::withMessages([
+                    'photos' => 'Pemprosesan watermark foto tidak tersedia. Sila aktifkan extension PHP GD di server.',
+                ]);
+            }
+        });
+
+        $task = $this->dailyTask();
+        $this->post(route('tasks.daily.complete', $task), [
+            'date' => $task->date->toDateString(),
+            'photos' => [$this->proof()],
+        ])->assertSessionHasErrors('photos');
+
+        $this->assertFalse($task->refresh()->is_completed);
+        $this->assertSame(0, $task->evidence()->count());
+    }
+
+    public function test_completion_stores_hard_watermarked_image_when_gd_is_available(): void
+    {
+        $watermarker = app(EvidenceWatermarker::class);
+
+        if (! $watermarker->isAvailable('image/png')) {
+            $this->markTestSkipped('PHP GD with PNG support is required to verify image watermarking.');
+        }
+
+        Storage::fake('local');
+        $task = $this->dailyTask();
+        $this->post(route('tasks.daily.complete', $task), [
+            'date' => $task->date->toDateString(),
+            'photos' => [$this->whitePngProof()],
+        ])->assertRedirect(route('checklist.index', ['date' => $task->date->toDateString()]));
+
+        $evidence = $task->evidence()->sole();
+        $contents = Storage::disk('local')->get($evidence->path);
+        $image = imagecreatefromstring($contents);
+        $sample = imagecolorat($image, 6, 136);
+        $red = ($sample >> 16) & 0xFF;
+        $green = ($sample >> 8) & 0xFF;
+        $blue = $sample & 0xFF;
+        imagedestroy($image);
+
+        $this->assertSame('image/png', $evidence->mime_type);
+        $this->assertLessThan(250, max($red, $green, $blue));
+    }
+
+    public function test_dashboard_source_keeps_admin_english_and_cleaner_malay(): void
+    {
+        $source = file_get_contents(resource_path('js/Pages/Dashboard.vue'));
+
+        $this->assertStringNotContainsString('Penta'.'dbir', $source);
+        $this->assertStringNotContainsString('penta'.'dbir', $source);
+        $this->assertStringContainsString('Admin Access', $source);
+        $this->assertStringContainsString('Statistics', $source);
+        $this->assertStringContainsString('Back to today', $source);
+        $this->assertStringContainsString('Buka senarai hari ini', $source);
+        $this->assertStringContainsString('Hantar bukti & tandakan selesai', $source);
+        $this->assertStringContainsString('() => closeEvidence(true)', $source);
+    }
+
     private function taskSession(string $name = 'Pagi'): TaskSession
     {
         return TaskSession::query()->where('name', $name)->sole();
@@ -358,6 +428,43 @@ class ChecklistWorkflowTest extends TestCase
         $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXsAAAAASUVORK5CYII=');
 
         return UploadedFile::fake()->createWithContent('proof.png', $png);
+    }
+
+    private function whitePngProof(): UploadedFile
+    {
+        $image = imagecreatetruecolor(320, 160);
+        $white = imagecolorallocate($image, 255, 255, 255);
+        imagefilledrectangle($image, 0, 0, 319, 159, $white);
+        ob_start();
+        imagepng($image);
+        $contents = ob_get_clean();
+        imagedestroy($image);
+
+        return UploadedFile::fake()->createWithContent('proof.png', $contents);
+    }
+
+    private function fakeWatermarker(): void
+    {
+        $this->app->instance(EvidenceWatermarker::class, new class extends EvidenceWatermarker
+        {
+            public function watermark(UploadedFile $photo, string $text): array
+            {
+                $path = $photo->getRealPath();
+                $contents = is_string($path) ? file_get_contents($path) : '';
+                $mime = (string) $photo->getMimeType();
+
+                return [
+                    'contents' => is_string($contents) ? $contents : '',
+                    'mime_type' => $mime,
+                    'extension' => match ($mime) {
+                        'image/jpeg' => 'jpg',
+                        'image/webp' => 'webp',
+                        default => 'png',
+                    },
+                    'size_bytes' => is_string($contents) ? strlen($contents) : 0,
+                ];
+            }
+        });
     }
 
     private function loginAdmin(): void

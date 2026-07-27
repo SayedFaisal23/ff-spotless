@@ -28,7 +28,7 @@ class TaskTemplateController extends Controller
         $session = TaskSession::query()->active()->find($data['task_session_id']);
 
         if ($session === null) {
-            throw ValidationException::withMessages(['task_session_id' => 'Sesi tugasan tidak aktif.']);
+            throw ValidationException::withMessages(['task_session_id' => 'Task session is not active.']);
         }
 
         DB::transaction(function () use ($data, $materializer): void {
@@ -59,7 +59,7 @@ class TaskTemplateController extends Controller
         $session = TaskSession::query()->active()->find($data['task_session_id']);
 
         if ($session === null) {
-            throw ValidationException::withMessages(['task_session_id' => 'Sesi tugasan tidak aktif.']);
+            throw ValidationException::withMessages(['task_session_id' => 'Task session is not active.']);
         }
 
         $updated = $materializer->updateTemplateAndCurrentAndFutureIncompleteSnapshots(
@@ -71,7 +71,7 @@ class TaskTemplateController extends Controller
         );
 
         if (! $updated) {
-            abort(404, 'Templat tugasan tidak ditemui atau telah diarkibkan.');
+            abort(404, 'Task template was not found or has been archived.');
         }
 
         return to_route('admin.index');

@@ -60,7 +60,7 @@ class TaskSessionManagementController extends Controller
         sort($submitted);
 
         if ($active !== $submitted) {
-            throw ValidationException::withMessages(['session_ids' => 'Susunan mesti mengandungi semua sesi aktif.']);
+            throw ValidationException::withMessages(['session_ids' => 'The order must contain every active session.']);
         }
 
         DB::transaction(function () use ($ids): void {
@@ -82,11 +82,11 @@ class TaskSessionManagementController extends Controller
         }
 
         if (TaskSession::query()->active()->count() <= 1) {
-            throw ValidationException::withMessages(['session' => 'Sekurang-kurangnya satu sesi aktif mesti dikekalkan.']);
+            throw ValidationException::withMessages(['session' => 'At least one active session must be kept.']);
         }
 
         if ($taskSession->taskTemplates()->active()->exists() || $taskSession->weeklyTaskTemplates()->active()->exists()) {
-            throw ValidationException::withMessages(['session' => 'Pindahkan semua tugasan aktif sebelum mengarkibkan sesi ini.']);
+            throw ValidationException::withMessages(['session' => 'Move every active task before archiving this session.']);
         }
 
         $taskSession->forceFill(['is_active' => false])->save();

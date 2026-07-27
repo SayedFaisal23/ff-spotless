@@ -21,7 +21,7 @@ const props = defineProps({
 
 const page = usePage();
 const screen = ref(resolveScreen());
-const adminTab = ref('history');
+const adminTab = ref('statistics');
 const selectedDate = ref(props.currentDate);
 const adminDate = ref(props.currentDate);
 const localTasks = ref([]);
@@ -43,6 +43,13 @@ const dailyForm = ref({ task_name: '', task_session_id: '', credit_hours: 1 });
 const weeklyForm = ref({ task_name: '', task_session_id: '', due_weekday: 1, credit_hours: 1 });
 const sessionForm = ref({ name: '' });
 const editForm = ref({});
+const adminTabs = [
+    { key: 'statistics', label: 'Statistics' },
+    { key: 'history', label: 'History' },
+    { key: 'sessions', label: 'Sessions' },
+    { key: 'weekly', label: 'Weekly' },
+    { key: 'daily', label: 'Daily' },
+];
 
 const activeSessions = computed(() => props.sessions.filter((session) => session.isActive));
 const templates = computed(() => collectionItems(props.templates));
@@ -52,10 +59,12 @@ const today = computed(() => new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date()));
 const isToday = computed(() => selectedDate.value === today.value);
+const adminIsToday = computed(() => adminDate.value === today.value);
 const locked = computed(() => props.isReadOnly || props.dayUnavailable || busy.value);
 const completedCount = computed(() => localTasks.value.filter((task) => task.completed).length);
 const progress = computed(() => localTasks.value.length ? Math.round((completedCount.value / localTasks.value.length) * 100) : 0);
 const statsMax = computed(() => Math.max(1, ...(props.statistics?.trend ?? []).map((row) => row.completed + row.missed + row.pending)));
+const adminTitle = computed(() => adminTabs.find((tab) => tab.key === adminTab.value)?.label ?? 'Statistics');
 
 watch(() => [props.mode, props.currentDate, props.tasks, props.dayUnavailable], async () => {
     screen.value = resolveScreen();
@@ -116,15 +125,23 @@ function sessionTone(index) {
 }
 
 function displayDate(value) {
+    return formatDate(value, 'ms-MY');
+}
+
+function displayAdminDate(value) {
+    return formatDate(value, 'en-MY');
+}
+
+function formatDate(value, locale) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return value;
     const [year, month, day] = value.split('-').map(Number);
-    return new Intl.DateTimeFormat('ms-MY', {
+    return new Intl.DateTimeFormat(locale, {
         weekday: 'long', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kuala_Lumpur',
     }).format(new Date(Date.UTC(year, month - 1, day, 12)));
 }
 
 function weekdayName(day) {
-    return ['Isnin', 'Selasa', 'Rabu', 'Khamis', 'Jumaat', 'Sabtu', 'Ahad'][Number(day) - 1] ?? '';
+    return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][Number(day) - 1] ?? '';
 }
 
 function dateOffset(value, offset) {
@@ -136,7 +153,7 @@ function dateOffset(value, offset) {
 
 function formatTimestamp(value) {
     if (!value) return '—';
-    return new Intl.DateTimeFormat('ms-MY', {
+    return new Intl.DateTimeFormat('en-MY', {
         dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur',
     }).format(new Date(value));
 }
@@ -169,7 +186,7 @@ function inertiaOptions(message, fallback, onSuccess = null) {
 
 function loginAdmin() {
     router.post('/admin/login', { password: adminLogin.value }, inertiaOptions(
-        'Akses pentadbir dibuka.', 'Kata laluan pentadbir tidak diterima.', () => adminLogin.value = '',
+        'Admin access opened.', 'Admin password was not accepted.', () => adminLogin.value = '',
     ));
 }
 
@@ -240,8 +257,8 @@ function clearEvidenceFiles() {
     evidenceFiles.value = [];
 }
 
-function closeEvidence() {
-    if (busy.value) return;
+function closeEvidence(force = false) {
+    if (busy.value && force !== true) return;
     clearEvidenceFiles();
     evidenceTask.value = null;
 }
@@ -256,7 +273,7 @@ function completeTask() {
     evidenceFiles.value.forEach((file) => form.append('photos[]', file));
     const task = evidenceTask.value;
     router.post(`/tasks/${task.type}/${task.id}/complete`, form, {
-        ...inertiaOptions('Tugasan selesai dengan bukti foto.', 'Tugasan tidak dapat diselesaikan.', closeEvidence),
+        ...inertiaOptions('Tugasan selesai dengan bukti foto.', 'Tugasan tidak dapat diselesaikan.', () => closeEvidence(true)),
         forceFormData: true,
     });
 }
@@ -317,14 +334,14 @@ function persistOrder(sessionId, items) {
 
 function createDaily() {
     router.post('/admin/templates', dailyForm.value, inertiaOptions(
-        'Tugasan harian ditambah.', 'Tugasan harian tidak dapat ditambah.',
+        'Daily task added.', 'Daily task could not be added.',
         () => dailyForm.value = { task_name: '', task_session_id: activeSessions.value[0]?.id ?? '', credit_hours: 1 },
     ));
 }
 
 function createWeekly() {
     router.post('/admin/weekly-templates', weeklyForm.value, inertiaOptions(
-        'Tugasan mingguan ditambah.', 'Tugasan mingguan tidak dapat ditambah.',
+        'Weekly task added.', 'Weekly task could not be added.',
         () => weeklyForm.value = { task_name: '', task_session_id: activeSessions.value[0]?.id ?? '', due_weekday: 1, credit_hours: 1 },
     ));
 }
@@ -339,19 +356,19 @@ function openEdit(kind, item) {
 function saveEdit() {
     const base = editing.value.kind === 'daily' ? '/admin/templates' : '/admin/weekly-templates';
     router.patch(`${base}/${editing.value.item.id}`, editForm.value, inertiaOptions(
-        'Templat dikemas kini.', 'Templat tidak dapat dikemas kini.', () => editing.value = null,
+        'Template updated.', 'Template could not be updated.', () => editing.value = null,
     ));
 }
 
 function deleteTemplate(kind, item) {
-    if (!confirm(`Arkibkan “${item.taskName}”? Rekod sejarah akan dikekalkan.`)) return;
+    if (!confirm(`Archive “${item.taskName}”? History records will be kept.`)) return;
     const base = kind === 'daily' ? '/admin/templates' : '/admin/weekly-templates';
-    router.delete(`${base}/${item.id}`, inertiaOptions('Templat diarkibkan.', 'Templat tidak dapat diarkibkan.'));
+    router.delete(`${base}/${item.id}`, inertiaOptions('Template archived.', 'Template could not be archived.'));
 }
 
 function createSession() {
     router.post('/admin/sessions', sessionForm.value, inertiaOptions(
-        'Sesi ditambah.', 'Sesi tidak dapat ditambah.', () => sessionForm.value.name = '',
+        'Session added.', 'Session could not be added.', () => sessionForm.value.name = '',
     ));
 }
 
@@ -362,13 +379,13 @@ function editSession(session) {
 
 function saveSession() {
     router.patch(`/admin/sessions/${sessionEditing.value.id}`, editForm.value, inertiaOptions(
-        'Nama sesi dikemas kini.', 'Sesi tidak dapat dikemas kini.', () => sessionEditing.value = null,
+        'Session name updated.', 'Session could not be updated.', () => sessionEditing.value = null,
     ));
 }
 
 function archiveSession(session) {
-    if (!confirm(`Arkibkan sesi “${session.name}”?`)) return;
-    router.delete(`/admin/sessions/${session.id}`, inertiaOptions('Sesi diarkibkan.', 'Sesi tidak dapat diarkibkan.'));
+    if (!confirm(`Archive session “${session.name}”?`)) return;
+    router.delete(`/admin/sessions/${session.id}`, inertiaOptions('Session archived.', 'Session could not be archived.'));
 }
 
 function moveSession(index, direction) {
@@ -377,7 +394,7 @@ function moveSession(index, direction) {
     if (target < 0 || target >= ordered.length) return;
     [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
     router.patch('/admin/sessions/reorder', { session_ids: ordered.map((session) => session.id) },
-        inertiaOptions('Susunan sesi disimpan.', 'Susunan sesi tidak dapat disimpan.'));
+        inertiaOptions('Session order saved.', 'Session order could not be saved.'));
 }
 
 function statsPreset(days) {
@@ -395,6 +412,11 @@ function customStats(event) {
         stats_to: form.get('stats_to'),
     });
 }
+
+function chooseAdminDate(event) {
+    const date = event.target.value;
+    if (date) openAdmin(date);
+}
 </script>
 
 <template>
@@ -408,15 +430,15 @@ function customStats(event) {
             <h1 class="text-3xl font-black tracking-tight">FF Spotless</h1>
             <p class="mt-3 text-sm leading-relaxed text-zinc-400">Senarai semak pembersihan harian dan tugasan mingguan.</p>
             <button class="mt-8 h-14 rounded-2xl bg-gradient-to-r from-[#ED4264] to-[#FFEDBC] font-black text-zinc-950" @click="openChecklist()">Buka senarai hari ini</button>
-            <button class="mt-3 h-12 rounded-2xl border border-zinc-700 text-sm font-bold text-zinc-300" @click="screen = 'admin-login'">Pentadbir</button>
+            <button class="mt-3 h-12 rounded-2xl border border-zinc-700 text-sm font-bold text-zinc-300" @click="screen = 'admin-login'">Admin</button>
         </main>
 
         <main v-else-if="screen === 'admin-login'" class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-            <button class="mb-8 w-fit text-sm text-zinc-400" @click="screen = 'welcome'">← Kembali</button>
-            <h1 class="text-center text-2xl font-black">Akses Pentadbir</h1>
+            <button class="mb-8 w-fit text-sm text-zinc-400" @click="screen = 'welcome'">← Back</button>
+            <h1 class="text-center text-2xl font-black">Admin Access</h1>
             <form class="mt-7 space-y-3" @submit.prevent="loginAdmin">
-                <input v-model="adminLogin" required type="password" autocomplete="current-password" class="h-14 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 text-center tracking-widest outline-none focus:border-[#ED4264]" placeholder="Kata laluan">
-                <button :disabled="busy" class="h-14 w-full rounded-2xl bg-gradient-to-r from-[#ED4264] to-[#FFEDBC] font-black text-zinc-950 disabled:opacity-50">Log masuk</button>
+                <input v-model="adminLogin" required type="password" autocomplete="current-password" class="h-14 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 text-center tracking-widest outline-none focus:border-[#ED4264]" placeholder="Password">
+                <button :disabled="busy" class="h-14 w-full rounded-2xl bg-gradient-to-r from-[#ED4264] to-[#FFEDBC] font-black text-zinc-950 disabled:opacity-50">Log in</button>
             </form>
         </main>
 
@@ -482,101 +504,156 @@ function customStats(event) {
             </section>
         </main>
 
-        <main v-else-if="screen === 'admin'" class="mx-auto min-h-screen max-w-7xl">
-            <header class="sticky top-0 z-30 border-b border-zinc-800 bg-[#121212]/95 px-5 py-4 backdrop-blur">
-                <div class="flex items-center justify-between">
-                    <div><p class="text-[10px] font-black uppercase tracking-[.2em] text-[#ED4264]">Pentadbir</p><h1 class="text-lg font-black">FF Spotless</h1></div>
-                    <div class="flex gap-2">
-                        <button class="rounded-lg border border-zinc-700 px-3 py-2 text-xs" @click="theme = theme === 'light' ? 'dark' : 'light'">{{ theme === 'light' ? 'Gelap' : 'Cerah' }}</button>
-                        <button class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold" @click="logoutAdmin">Log keluar</button>
-                    </div>
+        <main v-else-if="screen === 'admin'" class="min-h-screen lg:grid lg:grid-cols-[18rem_1fr]">
+            <aside class="sticky top-0 hidden h-screen flex-col border-r border-zinc-800 bg-[#121212]/95 px-5 py-6 lg:flex">
+                <div>
+                    <p class="text-[10px] font-black uppercase tracking-[.2em] text-[#ED4264]">Admin</p>
+                    <h1 class="mt-1 text-xl font-black">FF Spotless</h1>
                 </div>
-                <nav class="mt-4 flex gap-2 overflow-x-auto pb-1">
-                    <button v-for="tab in [
-                        ['history','Sejarah'], ['daily','Harian'], ['weekly','Mingguan'], ['sessions','Sesi'], ['statistics','Statistik']
-                    ]" :key="tab[0]" class="shrink-0 rounded-xl border px-3 py-2 text-xs font-bold" :class="adminTab === tab[0] ? 'border-[#ED4264]/40 bg-[#ED4264]/10 text-rose-200' : 'border-zinc-700 text-zinc-400'" @click="adminTab = tab[0]">{{ tab[1] }}</button>
+                <nav class="mt-8 space-y-2">
+                    <button v-for="tab in adminTabs" :key="tab.key" class="w-full rounded-xl border px-4 py-3 text-left text-sm font-bold" :class="adminTab === tab.key ? 'border-[#ED4264]/40 bg-[#ED4264]/10 text-rose-200' : 'border-transparent text-zinc-400 hover:border-zinc-700 hover:text-zinc-100'" @click="adminTab = tab.key">{{ tab.label }}</button>
                 </nav>
-            </header>
+                <div class="mt-auto space-y-2">
+                    <button class="w-full rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold" @click="theme = theme === 'light' ? 'dark' : 'light'">{{ theme === 'light' ? 'Dark mode' : 'Light mode' }}</button>
+                    <button class="w-full rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold text-rose-300" @click="logoutAdmin">Log out</button>
+                </div>
+            </aside>
 
-            <section class="px-5 py-6">
-                <div v-if="adminTab === 'history'" class="space-y-6">
-                    <div class="flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-900/50 p-3">
-                        <button class="h-10 w-10 rounded-xl border border-zinc-700" @click="openAdmin(dateOffset(adminDate, -1))">‹</button>
-                        <button class="flex-1 text-sm font-black" @click="openAdmin()">{{ displayDate(adminDate) }}</button>
-                        <button class="h-10 w-10 rounded-xl border border-zinc-700" @click="openAdmin(dateOffset(adminDate, 1))">›</button>
-                    </div>
-                    <section v-for="(session, index) in sessions" :key="session.id" v-show="historyFor(session.id).length">
-                        <header class="mb-3 flex justify-between"><h2 class="font-black uppercase" :class="sessionTone(index)">{{ session.name }}</h2><span class="text-xs text-zinc-500">{{ sessionCredits(historyFor(session.id)) }} jam kredit</span></header>
-                        <div class="grid gap-2 md:grid-cols-2">
-                            <button v-for="entry in historyFor(session.id)" :key="entry.key" class="rounded-xl border border-zinc-700 bg-zinc-900 p-4 text-left disabled:cursor-default" :disabled="!entry.evidence?.length" @click="viewingEvidence = entry">
-                                <div class="flex justify-between gap-3"><strong class="text-sm">{{ entry.text }}</strong><span class="rounded-full px-2 py-1 text-[9px] font-black uppercase" :class="entry.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300' : entry.status === 'missed' ? 'bg-rose-500/10 text-rose-300' : 'bg-zinc-800 text-zinc-400'">{{ entry.status === 'completed' ? 'Selesai' : entry.status === 'missed' ? 'Terlepas' : 'Menunggu' }}</span></div>
-                                <p class="mt-2 text-xs text-zinc-500">{{ entry.creditHours }} jam<span v-if="entry.type === 'weekly'"> · Mingguan, perlu {{ displayDate(entry.originalDueDate) }}</span></p>
-                                <p v-if="entry.isCompleted" class="mt-1 text-xs text-zinc-500">{{ formatTimestamp(entry.completedAt) }} · {{ entry.evidence.length }} foto</p>
-                            </button>
+            <div class="min-w-0">
+                <header class="sticky top-0 z-30 border-b border-zinc-800 bg-[#121212]/95 px-5 py-4 backdrop-blur lg:hidden">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-black uppercase tracking-[.2em] text-[#ED4264]">Admin</p>
+                            <h1 class="text-lg font-black">FF Spotless</h1>
                         </div>
-                    </section>
-                    <p v-if="!history.length" class="rounded-2xl border border-dashed border-zinc-700 p-10 text-center text-sm text-zinc-500">Tiada rekod untuk tarikh ini.</p>
-                </div>
+                        <div class="flex gap-2">
+                            <button class="rounded-lg border border-zinc-700 px-3 py-2 text-xs" @click="theme = theme === 'light' ? 'dark' : 'light'">{{ theme === 'light' ? 'Dark' : 'Light' }}</button>
+                            <button class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold" @click="logoutAdmin">Log out</button>
+                        </div>
+                    </div>
+                    <nav class="mt-4 flex gap-2 overflow-x-auto pb-1">
+                        <button v-for="tab in adminTabs" :key="tab.key" class="shrink-0 rounded-xl border px-3 py-2 text-xs font-bold" :class="adminTab === tab.key ? 'border-[#ED4264]/40 bg-[#ED4264]/10 text-rose-200' : 'border-zinc-700 text-zinc-400'" @click="adminTab = tab.key">{{ tab.label }}</button>
+                    </nav>
+                </header>
 
-                <div v-else-if="adminTab === 'daily'" class="grid gap-6 lg:grid-cols-[360px_1fr]">
-                    <form class="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/50 p-5" @submit.prevent="createDaily">
-                        <h2 class="font-black">Tambah Tugasan Harian</h2>
-                        <input v-model.trim="dailyForm.task_name" required maxlength="255" class="field" placeholder="Nama tugasan">
-                        <select v-model="dailyForm.task_session_id" required class="field"><option v-for="session in activeSessions" :key="session.id" :value="session.id">{{ session.name }}</option></select>
-                        <input v-model.number="dailyForm.credit_hours" required type="number" min="0.25" max="24" step="0.25" class="field" placeholder="Jam kredit">
-                        <button :disabled="busy" class="primary-button">Tambah tugasan</button>
-                    </form>
-                    <div class="space-y-6">
-                        <section v-for="(session, index) in activeSessions" :key="session.id">
-                            <header class="mb-2 flex justify-between"><h3 class="font-black uppercase" :class="sessionTone(index)">{{ session.name }}</h3><span class="text-xs text-zinc-500">{{ sessionCredits(templatesFor(session.id)) }} jam/hari</span></header>
-                            <div class="space-y-2"><article v-for="item in templatesFor(session.id)" :key="item.id" class="flex items-center justify-between gap-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3"><div><p class="text-sm font-semibold">{{ item.taskName }}</p><p class="text-xs text-zinc-500">{{ item.creditHours }} jam</p></div><div class="flex gap-2"><button class="small-button" @click="openEdit('daily', item)">Edit</button><button class="small-button text-rose-300" @click="deleteTemplate('daily', item)">Arkib</button></div></article></div>
+                <section class="mx-auto max-w-6xl px-5 py-6">
+                    <div class="mb-6 hidden items-end justify-between lg:flex">
+                        <div>
+                            <p class="text-xs font-bold uppercase tracking-[.2em] text-zinc-500">Admin Dashboard</p>
+                            <h2 class="mt-1 text-2xl font-black">{{ adminTitle }}</h2>
+                        </div>
+                    </div>
+
+                    <div v-if="adminTab === 'statistics' && statistics" class="space-y-6">
+                        <div class="flex flex-wrap gap-2">
+                            <button v-for="days in [7,30,90]" :key="days" class="small-button" @click="statsPreset(days)">{{ days }} days</button>
+                            <form class="flex flex-wrap gap-2" @submit.prevent="customStats">
+                                <input name="stats_from" type="date" required :value="statistics.from" class="field !w-auto">
+                                <input name="stats_to" type="date" required :value="statistics.to" class="field !w-auto">
+                                <button class="small-button">Filter</button>
+                            </form>
+                        </div>
+                        <p class="text-xs text-zinc-500">Accurate statistics are tracked from {{ displayAdminDate(statistics.trackingStart) }}.</p>
+                        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div v-for="card in [
+                                ['Completed', statistics.overview.completed], ['Missed', statistics.overview.missed], ['Completion rate', statistics.overview.completionRate + '%'], ['MC days', statistics.overview.mcDays],
+                                ['Planned credits', statistics.overview.plannedCredits.toFixed(2)], ['Completed credits', statistics.overview.completedCredits.toFixed(2)], ['Postponements', statistics.overview.postponements], ['Pending', statistics.overview.pending],
+                            ]" :key="card[0]" class="rounded-2xl border border-zinc-700 bg-zinc-900 p-4"><p class="text-xs font-bold uppercase text-zinc-500">{{ card[0] }}</p><p class="mt-2 text-2xl font-black">{{ card[1] }}</p></div>
+                        </div>
+                        <div class="rounded-2xl border border-zinc-700 bg-zinc-900 p-5">
+                            <h2 class="font-black">Daily Trend</h2>
+                            <div class="mt-5 flex h-44 items-end gap-1 overflow-x-auto">
+                                <div v-for="row in statistics.trend" :key="row.date" class="group flex min-w-4 flex-1 flex-col items-center justify-end" :title="`${displayAdminDate(row.date)}: ${row.completed} completed, ${row.missed} missed, ${row.pending} pending`">
+                                    <div class="w-full rounded-t bg-emerald-500" :style="{ height: `${(row.completed / statsMax) * 130}px` }"></div>
+                                    <div class="w-full bg-rose-500" :style="{ height: `${(row.missed / statsMax) * 130}px` }"></div>
+                                    <span class="mt-2 hidden text-[8px] text-zinc-600 md:block">{{ row.date.slice(8) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid gap-4 lg:grid-cols-2">
+                            <div class="rounded-2xl border border-zinc-700 bg-zinc-900 p-5">
+                                <h2 class="font-black">By Session</h2>
+                                <div class="mt-3 space-y-3">
+                                    <div v-for="row in statistics.sessions" :key="row.id" class="rounded-xl border border-zinc-700 p-3">
+                                        <div class="flex justify-between text-sm font-bold"><span>{{ row.name }}</span><span>{{ row.completedCredits }} / {{ row.plannedCredits }} hrs</span></div>
+                                        <p class="mt-1 text-xs text-zinc-500">{{ row.completed }} completed · {{ row.missed }} missed</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="rounded-2xl border border-zinc-700 bg-zinc-900 p-5">
+                                <h2 class="font-black">Weekly Status</h2>
+                                <div class="mt-4 grid grid-cols-3 gap-3 text-center">
+                                    <div v-for="item in [['Completed',statistics.weeklyStatus.completed],['Pending',statistics.weeklyStatus.pending],['Missed',statistics.weeklyStatus.missed]]" :key="item[0]" class="rounded-xl border border-zinc-700 p-4"><p class="text-2xl font-black">{{ item[1] }}</p><p class="mt-1 text-[10px] uppercase text-zinc-500">{{ item[0] }}</p></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-else-if="adminTab === 'history'" class="space-y-6">
+                        <div class="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-900/50 p-3">
+                            <button class="h-10 w-10 rounded-xl border border-zinc-700" aria-label="Previous day" @click="openAdmin(dateOffset(adminDate, -1))">‹</button>
+                            <input type="date" class="field !w-auto min-w-40" :value="adminDate" aria-label="Choose history date" @change="chooseAdminDate">
+                            <button class="h-10 w-10 rounded-xl border border-zinc-700" aria-label="Next day" @click="openAdmin(dateOffset(adminDate, 1))">›</button>
+                            <button v-if="!adminIsToday" class="small-button" @click="openAdmin()">Back to today</button>
+                            <span class="text-sm font-black text-zinc-300">{{ displayAdminDate(adminDate) }}</span>
+                        </div>
+                        <section v-for="(session, index) in sessions" :key="session.id" v-show="historyFor(session.id).length">
+                            <header class="mb-3 flex justify-between"><h2 class="font-black uppercase" :class="sessionTone(index)">{{ session.name }}</h2><span class="text-xs text-zinc-500">{{ sessionCredits(historyFor(session.id)) }} credit hrs</span></header>
+                            <div class="grid gap-2 md:grid-cols-2">
+                                <button v-for="entry in historyFor(session.id)" :key="entry.key" class="rounded-xl border border-zinc-700 bg-zinc-900 p-4 text-left disabled:cursor-default" :disabled="!entry.evidence?.length" @click="viewingEvidence = entry">
+                                    <div class="flex justify-between gap-3"><strong class="text-sm">{{ entry.text }}</strong><span class="rounded-full px-2 py-1 text-[9px] font-black uppercase" :class="entry.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300' : entry.status === 'missed' ? 'bg-rose-500/10 text-rose-300' : 'bg-zinc-800 text-zinc-400'">{{ entry.status === 'completed' ? 'Completed' : entry.status === 'missed' ? 'Missed' : 'Pending' }}</span></div>
+                                    <p class="mt-2 text-xs text-zinc-500">{{ entry.creditHours }} hrs<span v-if="entry.type === 'weekly'"> · Weekly, due {{ displayAdminDate(entry.originalDueDate) }}</span></p>
+                                    <p v-if="entry.isCompleted" class="mt-1 text-xs text-zinc-500">{{ formatTimestamp(entry.completedAt) }} · {{ entry.evidence.length }} photo{{ entry.evidence.length === 1 ? '' : 's' }}</p>
+                                </button>
+                            </div>
                         </section>
+                        <p v-if="!history.length" class="rounded-2xl border border-dashed border-zinc-700 p-10 text-center text-sm text-zinc-500">No records for this date.</p>
                     </div>
-                </div>
 
-                <div v-else-if="adminTab === 'weekly'" class="grid gap-6 lg:grid-cols-[360px_1fr]">
-                    <form class="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/50 p-5" @submit.prevent="createWeekly">
-                        <h2 class="font-black">Tambah Tugasan Mingguan</h2>
-                        <input v-model.trim="weeklyForm.task_name" required maxlength="255" class="field" placeholder="Nama tugasan">
-                        <select v-model="weeklyForm.task_session_id" required class="field"><option v-for="session in activeSessions" :key="session.id" :value="session.id">{{ session.name }}</option></select>
-                        <select v-model.number="weeklyForm.due_weekday" class="field"><option v-for="day in 7" :key="day" :value="day">{{ weekdayName(day) }}</option></select>
-                        <input v-model.number="weeklyForm.credit_hours" required type="number" min="0.25" max="24" step="0.25" class="field" placeholder="Jam kredit">
-                        <button :disabled="busy" class="primary-button">Tambah mingguan</button>
-                    </form>
-                    <div class="space-y-6">
-                        <section v-for="(session, index) in activeSessions" :key="session.id">
-                            <header class="mb-2 flex justify-between"><h3 class="font-black uppercase" :class="sessionTone(index)">{{ session.name }}</h3><span class="text-xs text-zinc-500">{{ sessionCredits(templatesFor(session.id, true)) }} jam/minggu</span></header>
-                            <div class="space-y-2"><article v-for="item in templatesFor(session.id, true)" :key="item.id" class="flex items-center justify-between gap-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3"><div><p class="text-sm font-semibold">{{ item.taskName }}</p><p class="text-xs text-zinc-500">{{ weekdayName(item.dueWeekday) }} · {{ item.creditHours }} jam</p></div><div class="flex gap-2"><button class="small-button" @click="openEdit('weekly', item)">Edit</button><button class="small-button text-rose-300" @click="deleteTemplate('weekly', item)">Arkib</button></div></article></div>
-                        </section>
+                    <div v-else-if="adminTab === 'sessions'" class="grid gap-6 lg:grid-cols-[360px_1fr]">
+                        <div class="space-y-5">
+                            <form class="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/50 p-5" @submit.prevent="createSession"><h2 class="font-black">Add Session</h2><input v-model.trim="sessionForm.name" required maxlength="100" class="field" placeholder="Session name"><button class="primary-button">Add session</button></form>
+                            <div class="rounded-2xl border border-zinc-700 bg-zinc-900/50 p-5"><h2 class="font-black">Expected Weekly Load</h2><div class="mt-3 space-y-2"><div v-for="row in workload" :key="row.sessionId" class="rounded-xl border p-3" :class="row.isOverloaded ? 'border-amber-500/40 bg-amber-500/10' : 'border-zinc-700'"><div class="flex justify-between text-sm font-bold"><span>{{ row.sessionName }}</span><span>{{ row.expectedWeeklyCredits }} hrs</span></div><p class="mt-1 text-[10px] text-zinc-500">7 × {{ row.dailyCredits }} daily + {{ row.weeklyCredits }} weekly<span v-if="row.isOverloaded" class="text-amber-300"> · more than 20% above average</span></p></div></div></div>
+                        </div>
+                        <div class="space-y-2">
+                            <article v-for="(session, index) in activeSessions" :key="session.id" class="flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-900 p-4"><span class="w-7 text-center font-black text-zinc-500">{{ index + 1 }}</span><strong class="min-w-0 flex-1">{{ session.name }}</strong><button class="small-button" :disabled="index === 0" @click="moveSession(index, -1)">▲</button><button class="small-button" :disabled="index === activeSessions.length - 1" @click="moveSession(index, 1)">▼</button><button class="small-button" @click="editSession(session)">Edit</button><button class="small-button text-rose-300" @click="archiveSession(session)">Archive</button></article>
+                        </div>
                     </div>
-                </div>
 
-                <div v-else-if="adminTab === 'sessions'" class="grid gap-6 lg:grid-cols-[360px_1fr]">
-                    <div class="space-y-5">
-                        <form class="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/50 p-5" @submit.prevent="createSession"><h2 class="font-black">Tambah Sesi</h2><input v-model.trim="sessionForm.name" required maxlength="100" class="field" placeholder="Nama sesi"><button class="primary-button">Tambah sesi</button></form>
-                        <div class="rounded-2xl border border-zinc-700 bg-zinc-900/50 p-5"><h2 class="font-black">Beban Mingguan Dijangka</h2><div class="mt-3 space-y-2"><div v-for="row in workload" :key="row.sessionId" class="rounded-xl border p-3" :class="row.isOverloaded ? 'border-amber-500/40 bg-amber-500/10' : 'border-zinc-700'"><div class="flex justify-between text-sm font-bold"><span>{{ row.sessionName }}</span><span>{{ row.expectedWeeklyCredits }} jam</span></div><p class="mt-1 text-[10px] text-zinc-500">7 × {{ row.dailyCredits }} harian + {{ row.weeklyCredits }} mingguan<span v-if="row.isOverloaded" class="text-amber-300"> · melebihi purata 20%</span></p></div></div></div>
+                    <div v-else-if="adminTab === 'weekly'" class="grid gap-6 lg:grid-cols-[360px_1fr]">
+                        <form class="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/50 p-5" @submit.prevent="createWeekly">
+                            <h2 class="font-black">Add Weekly Task</h2>
+                            <input v-model.trim="weeklyForm.task_name" required maxlength="255" class="field" placeholder="Task name">
+                            <select v-model="weeklyForm.task_session_id" required class="field"><option v-for="session in activeSessions" :key="session.id" :value="session.id">{{ session.name }}</option></select>
+                            <select v-model.number="weeklyForm.due_weekday" class="field"><option v-for="day in 7" :key="day" :value="day">{{ weekdayName(day) }}</option></select>
+                            <input v-model.number="weeklyForm.credit_hours" required type="number" min="0.25" max="24" step="0.25" class="field" placeholder="Credit hours">
+                            <button :disabled="busy" class="primary-button">Add weekly task</button>
+                        </form>
+                        <div class="space-y-6">
+                            <section v-for="(session, index) in activeSessions" :key="session.id">
+                                <header class="mb-2 flex justify-between"><h3 class="font-black uppercase" :class="sessionTone(index)">{{ session.name }}</h3><span class="text-xs text-zinc-500">{{ sessionCredits(templatesFor(session.id, true)) }} hrs/week</span></header>
+                                <div class="space-y-2"><article v-for="item in templatesFor(session.id, true)" :key="item.id" class="flex items-center justify-between gap-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3"><div><p class="text-sm font-semibold">{{ item.taskName }}</p><p class="text-xs text-zinc-500">{{ weekdayName(item.dueWeekday) }} · {{ item.creditHours }} hrs</p></div><div class="flex gap-2"><button class="small-button" @click="openEdit('weekly', item)">Edit</button><button class="small-button text-rose-300" @click="deleteTemplate('weekly', item)">Archive</button></div></article></div>
+                            </section>
+                        </div>
                     </div>
-                    <div class="space-y-2">
-                        <article v-for="(session, index) in activeSessions" :key="session.id" class="flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-900 p-4"><span class="w-7 text-center font-black text-zinc-500">{{ index + 1 }}</span><strong class="min-w-0 flex-1">{{ session.name }}</strong><button class="small-button" :disabled="index === 0" @click="moveSession(index, -1)">▲</button><button class="small-button" :disabled="index === activeSessions.length - 1" @click="moveSession(index, 1)">▼</button><button class="small-button" @click="editSession(session)">Edit</button><button class="small-button text-rose-300" @click="archiveSession(session)">Arkib</button></article>
-                    </div>
-                </div>
 
-                <div v-else-if="adminTab === 'statistics' && statistics" class="space-y-6">
-                    <div class="flex flex-wrap gap-2"><button v-for="days in [7,30,90]" :key="days" class="small-button" @click="statsPreset(days)">{{ days }} hari</button><form class="flex flex-wrap gap-2" @submit.prevent="customStats"><input name="stats_from" type="date" required :value="statistics.from" class="field !w-auto"><input name="stats_to" type="date" required :value="statistics.to" class="field !w-auto"><button class="small-button">Tapis</button></form></div>
-                    <p class="text-xs text-zinc-500">Statistik tepat tersedia dari {{ displayDate(statistics.trackingStart) }}.</p>
-                    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <div v-for="card in [
-                            ['Selesai', statistics.overview.completed], ['Terlepas', statistics.overview.missed], ['Kadar selesai', statistics.overview.completionRate + '%'], ['MC', statistics.overview.mcDays],
-                            ['Kredit dirancang', statistics.overview.plannedCredits.toFixed(2)], ['Kredit selesai', statistics.overview.completedCredits.toFixed(2)], ['Ditunda', statistics.overview.postponements], ['Menunggu', statistics.overview.pending],
-                        ]" :key="card[0]" class="rounded-2xl border border-zinc-700 bg-zinc-900 p-4"><p class="text-xs font-bold uppercase text-zinc-500">{{ card[0] }}</p><p class="mt-2 text-2xl font-black">{{ card[1] }}</p></div>
+                    <div v-else-if="adminTab === 'daily'" class="grid gap-6 lg:grid-cols-[360px_1fr]">
+                        <form class="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-900/50 p-5" @submit.prevent="createDaily">
+                            <h2 class="font-black">Add Daily Task</h2>
+                            <input v-model.trim="dailyForm.task_name" required maxlength="255" class="field" placeholder="Task name">
+                            <select v-model="dailyForm.task_session_id" required class="field"><option v-for="session in activeSessions" :key="session.id" :value="session.id">{{ session.name }}</option></select>
+                            <input v-model.number="dailyForm.credit_hours" required type="number" min="0.25" max="24" step="0.25" class="field" placeholder="Credit hours">
+                            <button :disabled="busy" class="primary-button">Add daily task</button>
+                        </form>
+                        <div class="space-y-6">
+                            <section v-for="(session, index) in activeSessions" :key="session.id">
+                                <header class="mb-2 flex justify-between"><h3 class="font-black uppercase" :class="sessionTone(index)">{{ session.name }}</h3><span class="text-xs text-zinc-500">{{ sessionCredits(templatesFor(session.id)) }} hrs/day</span></header>
+                                <div class="space-y-2"><article v-for="item in templatesFor(session.id)" :key="item.id" class="flex items-center justify-between gap-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3"><div><p class="text-sm font-semibold">{{ item.taskName }}</p><p class="text-xs text-zinc-500">{{ item.creditHours }} hrs</p></div><div class="flex gap-2"><button class="small-button" @click="openEdit('daily', item)">Edit</button><button class="small-button text-rose-300" @click="deleteTemplate('daily', item)">Archive</button></div></article></div>
+                            </section>
+                        </div>
                     </div>
-                    <div class="rounded-2xl border border-zinc-700 bg-zinc-900 p-5"><h2 class="font-black">Trend Harian</h2><div class="mt-5 flex h-44 items-end gap-1 overflow-x-auto"><div v-for="row in statistics.trend" :key="row.date" class="group flex min-w-4 flex-1 flex-col items-center justify-end" :title="`${displayDate(row.date)}: ${row.completed} selesai, ${row.missed} terlepas`"><div class="w-full rounded-t bg-emerald-500" :style="{ height: `${(row.completed / statsMax) * 130}px` }"></div><div class="w-full bg-rose-500" :style="{ height: `${(row.missed / statsMax) * 130}px` }"></div><span class="mt-2 hidden text-[8px] text-zinc-600 md:block">{{ row.date.slice(8) }}</span></div></div></div>
-                    <div class="grid gap-4 lg:grid-cols-2">
-                        <div class="rounded-2xl border border-zinc-700 bg-zinc-900 p-5"><h2 class="font-black">Mengikut Sesi</h2><div class="mt-3 space-y-3"><div v-for="row in statistics.sessions" :key="row.id" class="rounded-xl border border-zinc-700 p-3"><div class="flex justify-between text-sm font-bold"><span>{{ row.name }}</span><span>{{ row.completedCredits }} / {{ row.plannedCredits }} jam</span></div><p class="mt-1 text-xs text-zinc-500">{{ row.completed }} selesai · {{ row.missed }} terlepas</p></div></div></div>
-                        <div class="rounded-2xl border border-zinc-700 bg-zinc-900 p-5"><h2 class="font-black">Status Mingguan</h2><div class="mt-4 grid grid-cols-3 gap-3 text-center"><div v-for="item in [['Selesai',statistics.weeklyStatus.completed],['Menunggu',statistics.weeklyStatus.pending],['Terlepas',statistics.weeklyStatus.missed]]" :key="item[0]" class="rounded-xl border border-zinc-700 p-4"><p class="text-2xl font-black">{{ item[1] }}</p><p class="mt-1 text-[10px] uppercase text-zinc-500">{{ item[0] }}</p></div></div></div>
-                    </div>
-                </div>
-            </section>
+                </section>
+            </div>
         </main>
 
         <div v-if="evidenceTask" class="modal-backdrop">
@@ -598,25 +675,25 @@ function customStats(event) {
 
         <div v-if="viewingEvidence" class="modal-backdrop">
             <div class="modal-card max-w-3xl">
-                <div class="flex justify-between gap-3"><div><h2 class="font-black">{{ viewingEvidence.text }}</h2><p class="mt-1 text-xs text-zinc-500">{{ formatTimestamp(viewingEvidence.completedAt) }} · {{ viewingEvidence.creditHours }} jam</p></div><button class="small-button" @click="viewingEvidence = null">✕</button></div>
-                <p v-if="viewingEvidence.type === 'weekly'" class="mt-3 text-xs text-sky-300">Mingguan · perlu {{ displayDate(viewingEvidence.originalDueDate) }} · dijadual akhir {{ displayDate(viewingEvidence.scheduledDate) }}</p>
-                <div class="mt-5 grid gap-3 sm:grid-cols-2"><a v-for="photo in viewingEvidence.evidence" :key="photo.id" :href="photo.url" target="_blank" rel="noopener" class="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900"><img :src="photo.url" loading="lazy" alt="Foto bukti tugasan" class="max-h-96 w-full object-contain"></a></div>
+                <div class="flex justify-between gap-3"><div><h2 class="font-black">{{ viewingEvidence.text }}</h2><p class="mt-1 text-xs text-zinc-500">{{ formatTimestamp(viewingEvidence.completedAt) }} · {{ viewingEvidence.creditHours }} hrs</p></div><button class="small-button" @click="viewingEvidence = null">✕</button></div>
+                <p v-if="viewingEvidence.type === 'weekly'" class="mt-3 text-xs text-sky-300">Weekly · due {{ displayAdminDate(viewingEvidence.originalDueDate) }} · final scheduled date {{ displayAdminDate(viewingEvidence.scheduledDate) }}</p>
+                <div class="mt-5 grid gap-3 sm:grid-cols-2"><a v-for="photo in viewingEvidence.evidence" :key="photo.id" :href="photo.url" target="_blank" rel="noopener" class="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900"><img :src="photo.url" loading="lazy" alt="Task evidence photo" class="max-h-96 w-full object-contain"></a></div>
             </div>
         </div>
 
         <div v-if="editing || sessionEditing" class="modal-backdrop">
             <form class="modal-card" @submit.prevent="sessionEditing ? saveSession() : saveEdit()">
-                <div class="flex justify-between"><h2 class="font-black">{{ sessionEditing ? 'Edit Sesi' : 'Edit Templat' }}</h2><button type="button" class="small-button" @click="editing = null; sessionEditing = null">✕</button></div>
+                <div class="flex justify-between"><h2 class="font-black">{{ sessionEditing ? 'Edit Session' : 'Edit Template' }}</h2><button type="button" class="small-button" @click="editing = null; sessionEditing = null">✕</button></div>
                 <div class="mt-5 space-y-3">
-                    <input v-if="sessionEditing" v-model.trim="editForm.name" required maxlength="100" class="field" placeholder="Nama sesi">
+                    <input v-if="sessionEditing" v-model.trim="editForm.name" required maxlength="100" class="field" placeholder="Session name">
                     <template v-else>
-                        <input v-model.trim="editForm.task_name" required maxlength="255" class="field" placeholder="Nama tugasan">
+                        <input v-model.trim="editForm.task_name" required maxlength="255" class="field" placeholder="Task name">
                         <select v-model="editForm.task_session_id" required class="field"><option v-for="session in activeSessions" :key="session.id" :value="session.id">{{ session.name }}</option></select>
                         <select v-if="editing.kind === 'weekly'" v-model.number="editForm.due_weekday" class="field"><option v-for="day in 7" :key="day" :value="day">{{ weekdayName(day) }}</option></select>
                         <input v-model.number="editForm.credit_hours" required type="number" min="0.25" max="24" step="0.25" class="field">
                     </template>
                 </div>
-                <button class="primary-button mt-5">Simpan perubahan</button>
+                <button class="primary-button mt-5">Save changes</button>
             </form>
         </div>
     </div>

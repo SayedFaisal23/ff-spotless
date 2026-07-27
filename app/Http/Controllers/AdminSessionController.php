@@ -15,7 +15,7 @@ class AdminSessionController extends Controller
 
         if (! is_string($password) || ! $adminSession->attempt($password)) {
             throw ValidationException::withMessages([
-                'password' => 'Kata laluan pentadbir tidak sah.',
+                'password' => 'The admin password is invalid.',
             ]);
         }
 

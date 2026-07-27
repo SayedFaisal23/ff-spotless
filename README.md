@@ -74,22 +74,23 @@ Hostinger Git deployment pulls from the `production` branch. Commit and push
 production-ready source changes to that branch before triggering a Hostinger
 deploy.
 
-Hostinger SSH on this hosting plan does not support `npm`. After deploying the
-Laravel source through Git, build the frontend on a developer machine from the
-same commit:
+Hostinger SSH on this hosting plan does not support `npm`. Build the frontend
+on a developer machine from the same source commit that will be deployed:
 
 ```bash
 npm install
 npm run build
 ```
 
-Then upload the complete generated folder through Hostinger File Manager:
+Because Hostinger deploys this project through Git, commit the complete
+generated folder with the matching Laravel source:
 
 ```text
 public/build/
 ```
 
-Place it at:
+If you ever deploy with File Manager instead of Git, place that complete folder
+at:
 
 ```text
 public_html/public/build/
@@ -141,7 +142,8 @@ php artisan route:cache
 Before applying the configurable-session migration, back up both the MySQL
 database and `storage/app/private`. Ensure `storage/app/private/evidence` can be
 written by PHP but cannot be served directly by Apache. Review the hosting
-account's PHP upload limits before enabling evidence uploads.
+account's PHP upload limits before enabling evidence uploads. Evidence photo
+watermarking requires the PHP `gd` extension with JPEG, PNG, and WebP support.
 
 Changing `CHECKLIST_ADMIN_PASSWORD` in `private/.env` takes effect after the config cache is rebuilt and PHP has reloaded. Never deploy the development default of `12345678`; replace it with a strong secret in `private/.env`. The password is never stored in the session; the configured session only records successful master-admin authentication.
 

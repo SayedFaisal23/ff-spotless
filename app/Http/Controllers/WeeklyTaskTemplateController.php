@@ -25,7 +25,7 @@ class WeeklyTaskTemplateController extends Controller
         $session = TaskSession::query()->active()->find($data['task_session_id']);
 
         if ($session === null) {
-            throw ValidationException::withMessages(['task_session_id' => 'Sesi tugasan tidak aktif.']);
+            throw ValidationException::withMessages(['task_session_id' => 'Task session is not active.']);
         }
 
         $today = $dates->today();
@@ -58,7 +58,7 @@ class WeeklyTaskTemplateController extends Controller
         $scheduler->advanceThrough($dates->today());
 
         if (! $weeklyTaskTemplate->is_active || ! TaskSession::query()->active()->whereKey($data['task_session_id'])->exists()) {
-            throw ValidationException::withMessages(['task' => 'Templat mingguan atau sesi tidak aktif.']);
+            throw ValidationException::withMessages(['task' => 'Weekly template or session is not active.']);
         }
 
         $weeklyTaskTemplate->forceFill($data)->save();

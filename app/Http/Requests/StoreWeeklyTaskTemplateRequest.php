@@ -32,15 +32,15 @@ class StoreWeeklyTaskTemplateRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'task_name.required' => 'Nama tugasan diperlukan.',
-            'task_name.max' => 'Nama tugasan tidak boleh melebihi 255 aksara.',
-            'task_session_id.required' => 'Sesi tugasan diperlukan.',
-            'task_session_id.exists' => 'Sesi tugasan tidak ditemui.',
-            'due_weekday.required' => 'Hari tugasan mingguan diperlukan.',
-            'due_weekday.between' => 'Hari tugasan mingguan tidak sah.',
-            'credit_hours.required' => 'Jam kredit diperlukan.',
-            'credit_hours.min' => 'Jam kredit mestilah sekurang-kurangnya 0.25.',
-            'credit_hours.max' => 'Jam kredit tidak boleh melebihi 24.',
+            'task_name.required' => 'Task name is required.',
+            'task_name.max' => 'Task name must not exceed 255 characters.',
+            'task_session_id.required' => 'Task session is required.',
+            'task_session_id.exists' => 'Task session was not found.',
+            'due_weekday.required' => 'Weekly due day is required.',
+            'due_weekday.between' => 'Weekly due day is invalid.',
+            'credit_hours.required' => 'Credit hours are required.',
+            'credit_hours.min' => 'Credit hours must be at least 0.25.',
+            'credit_hours.max' => 'Credit hours must not exceed 24.',
         ];
     }
 }

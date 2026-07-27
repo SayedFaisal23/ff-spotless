@@ -32,9 +32,9 @@ class StoreTaskSessionRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.required' => 'Nama sesi diperlukan.',
-            'name.max' => 'Nama sesi tidak boleh melebihi 100 aksara.',
-            'name.unique' => 'Nama sesi telah digunakan.',
+            'name.required' => 'Session name is required.',
+            'name.max' => 'Session name must not exceed 100 characters.',
+            'name.unique' => 'Session name has already been used.',
         ];
     }
 }

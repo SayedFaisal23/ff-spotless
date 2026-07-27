@@ -32,11 +32,11 @@ class AdminHistoryRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'date.string' => 'Tarikh tidak sah.',
-            'date.date_format' => 'Tarikh mesti menggunakan format YYYY-MM-DD.',
-            'stats_from.date_format' => 'Tarikh mula statistik mesti menggunakan format YYYY-MM-DD.',
-            'stats_to.date_format' => 'Tarikh akhir statistik mesti menggunakan format YYYY-MM-DD.',
-            'stats_to.after_or_equal' => 'Tarikh akhir statistik mesti selepas tarikh mula.',
+            'date.string' => 'Date is invalid.',
+            'date.date_format' => 'Date must use the YYYY-MM-DD format.',
+            'stats_from.date_format' => 'Statistics start date must use the YYYY-MM-DD format.',
+            'stats_to.date_format' => 'Statistics end date must use the YYYY-MM-DD format.',
+            'stats_to.after_or_equal' => 'Statistics end date must be after the start date.',
         ];
     }
 }

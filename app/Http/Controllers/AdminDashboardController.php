@@ -29,7 +29,7 @@ class AdminDashboardController extends Controller
             $checklist = $workflow->forDate($date);
         } catch (ChecklistDateOutsideMaterializationWindow) {
             throw ValidationException::withMessages([
-                'date' => 'Senarai semak baharu hanya boleh dicipta dalam tempoh 365 hari dari hari ini.',
+                'date' => 'A new checklist can only be created within 365 days from today.',
             ]);
         }
 

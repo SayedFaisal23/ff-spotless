@@ -27,9 +27,9 @@ class AdminLoginRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'password.required' => 'Kata laluan diperlukan.',
-            'password.string' => 'Kata laluan tidak sah.',
-            'password.max' => 'Kata laluan tidak sah.',
+            'password.required' => 'Password is required.',
+            'password.string' => 'Password is invalid.',
+            'password.max' => 'Password is invalid.',
         ];
     }
 }
