@@ -44,11 +44,11 @@ const weeklyForm = ref({ task_name: '', task_session_id: '', due_weekday: 1, cre
 const sessionForm = ref({ name: '' });
 const editForm = ref({});
 const adminTabs = [
-    { key: 'statistics', label: 'Statistics' },
-    { key: 'history', label: 'History' },
-    { key: 'sessions', label: 'Sessions' },
-    { key: 'weekly', label: 'Weekly' },
-    { key: 'daily', label: 'Daily' },
+    { key: 'statistics', label: 'Dashboard' },
+    { key: 'history', label: 'View History' },
+    { key: 'sessions', label: 'Session Editor' },
+    { key: 'weekly', label: 'Weekly Task Editor' },
+    { key: 'daily', label: 'Daily Task Editor' },
 ];
 
 const activeSessions = computed(() => props.sessions.filter((session) => session.isActive));
@@ -64,7 +64,7 @@ const locked = computed(() => props.isReadOnly || props.dayUnavailable || busy.v
 const completedCount = computed(() => localTasks.value.filter((task) => task.completed).length);
 const progress = computed(() => localTasks.value.length ? Math.round((completedCount.value / localTasks.value.length) * 100) : 0);
 const statsMax = computed(() => Math.max(1, ...(props.statistics?.trend ?? []).map((row) => row.completed + row.missed + row.pending)));
-const adminTitle = computed(() => adminTabs.find((tab) => tab.key === adminTab.value)?.label ?? 'Statistics');
+const adminTitle = computed(() => adminTabs.find((tab) => tab.key === adminTab.value)?.label ?? 'Dashboard');
 
 watch(() => [props.mode, props.currentDate, props.tasks, props.dayUnavailable], async () => {
     screen.value = resolveScreen();
