@@ -322,7 +322,7 @@ class ChecklistWorkflowTest extends TestCase
             public function watermark(UploadedFile $photo, string $text): array
             {
                 throw ValidationException::withMessages([
-                    'photos' => 'Pemprosesan watermark foto tidak tersedia. Sila aktifkan extension PHP GD di server.',
+                    'photos' => 'Pemprosesan watermark foto tidak tersedia. Sila aktifkan extension PHP GD dan EXIF di server.',
                 ]);
             }
         });
@@ -363,6 +363,37 @@ class ChecklistWorkflowTest extends TestCase
 
         $this->assertSame('image/png', $evidence->mime_type);
         $this->assertLessThan(250, max($red, $green, $blue));
+    }
+
+    public function test_completion_corrects_phone_jpeg_orientation_before_watermarking(): void
+    {
+        $watermarker = app(EvidenceWatermarker::class);
+
+        if (! $watermarker->isAvailable('image/jpeg')) {
+            $this->markTestSkipped('PHP GD with JPEG support and EXIF support is required to verify phone photo orientation.');
+        }
+
+        Storage::fake('local');
+        $task = $this->dailyTask();
+        $this->post(route('tasks.daily.complete', $task), [
+            'date' => $task->date->toDateString(),
+            'photos' => [$this->phoneJpegProof(6)],
+        ])->assertRedirect(route('checklist.index', ['date' => $task->date->toDateString()]));
+
+        $evidence = $task->evidence()->sole();
+        $contents = Storage::disk('local')->get($evidence->path);
+        $image = imagecreatefromstring($contents);
+        $width = imagesx($image);
+        $height = imagesy($image);
+        $sample = imagecolorat($image, 10, $height - 10);
+        $red = ($sample >> 16) & 0xFF;
+        $green = ($sample >> 8) & 0xFF;
+        $blue = $sample & 0xFF;
+        imagedestroy($image);
+
+        $this->assertSame('image/jpeg', $evidence->mime_type);
+        $this->assertLessThan($height, $width, 'EXIF orientation 6 should be rotated into portrait dimensions.');
+        $this->assertLessThan(250, max($red, $green, $blue), 'Watermark background should visibly darken the bottom-left pixels.');
     }
 
     public function test_dashboard_source_keeps_admin_english_and_cleaner_malay(): void
@@ -441,6 +472,39 @@ class ChecklistWorkflowTest extends TestCase
         imagedestroy($image);
 
         return UploadedFile::fake()->createWithContent('proof.png', $contents);
+    }
+
+    private function phoneJpegProof(int $orientation): UploadedFile
+    {
+        $image = imagecreatetruecolor(120, 80);
+        $white = imagecolorallocate($image, 255, 255, 255);
+        imagefilledrectangle($image, 0, 0, 119, 79, $white);
+
+        ob_start();
+        imagejpeg($image, null, 90);
+        $contents = ob_get_clean();
+        imagedestroy($image);
+
+        return UploadedFile::fake()->createWithContent('proof.jpg', $this->addExifOrientation($contents, $orientation));
+    }
+
+    private function addExifOrientation(string $jpeg, int $orientation): string
+    {
+        $payload = "Exif\0\0"
+            .'II'
+            .pack('v', 42)
+            .pack('V', 8)
+            .pack('v', 1)
+            .pack('v', 0x0112)
+            .pack('v', 3)
+            .pack('V', 1)
+            .pack('v', $orientation)
+            .pack('v', 0)
+            .pack('V', 0);
+
+        $segment = "\xFF\xE1".pack('n', strlen($payload) + 2).$payload;
+
+        return substr($jpeg, 0, 2).$segment.substr($jpeg, 2);
     }
 
     private function fakeWatermarker(): void

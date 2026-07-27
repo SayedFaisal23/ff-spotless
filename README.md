@@ -144,6 +144,8 @@ database and `storage/app/private`. Ensure `storage/app/private/evidence` can be
 written by PHP but cannot be served directly by Apache. Review the hosting
 account's PHP upload limits before enabling evidence uploads. Evidence photo
 watermarking requires the PHP `gd` extension with JPEG, PNG, and WebP support.
+Phone-photo orientation correction for JPEG evidence also requires the PHP
+`exif` extension.
 
 Changing `CHECKLIST_ADMIN_PASSWORD` in `private/.env` takes effect after the config cache is rebuilt and PHP has reloaded. Never deploy the development default of `12345678`; replace it with a strong secret in `private/.env`. The password is never stored in the session; the configured session only records successful master-admin authentication.
 

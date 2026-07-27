@@ -37,7 +37,7 @@ WORKDIR /var/www/html
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends libjpeg62-turbo-dev libpng-dev libsqlite3-dev libwebp-dev \
     && docker-php-ext-configure gd --with-jpeg --with-webp \
-    && docker-php-ext-install gd pdo_mysql pdo_sqlite opcache \
+    && docker-php-ext-install exif gd pdo_mysql pdo_sqlite opcache \
     && a2enmod headers rewrite \
     && rm -rf /var/lib/apt/lists/*
 
