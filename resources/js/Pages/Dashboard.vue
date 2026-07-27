@@ -488,7 +488,7 @@ function chooseAdminDate(event) {
                                         <span class="block text-sm font-semibold" :class="task.completed ? 'text-zinc-500 line-through' : 'text-zinc-100'">{{ task.text }}</span>
                                         <span class="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase text-zinc-500">
                                             <span>{{ task.creditHours }} jam</span>
-                                            <span v-if="task.isWeekly" class="text-sky-300">Mingguan · perlu {{ displayDate(task.originalDueDate) }}</span>
+                                            <span v-if="task.isWeekly" class="text-sky-300">Mingguan · sebelum {{ displayDate(task.originalDueDate) }}</span>
                                             <span v-if="task.postponedCount">Ditunda {{ task.postponedCount }}×</span>
                                         </span>
                                     </span>
