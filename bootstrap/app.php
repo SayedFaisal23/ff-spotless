@@ -5,6 +5,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 use Illuminate\Http\Request;
 
 $app = Application::configure(basePath: dirname(__DIR__))
@@ -33,6 +34,16 @@ $app = Application::configure(basePath: dirname(__DIR__))
                     'rate_limit' => 'Terlalu banyak percubaan. Sila tunggu satu minit sebelum mencuba semula.',
                 ])
                 ->withHeaders($exception->getHeaders());
+        });
+
+        $exceptions->render(function (PostTooLargeException $exception, Request $request) {
+            if (! $request->hasHeader('X-Inertia')) {
+                return null;
+            }
+
+            return back()->withErrors([
+                'photos' => 'Jumlah saiz foto melebihi had pelayan. Kurangkan bilangan atau saiz foto dan cuba lagi.',
+            ]);
         });
     })->create();
 

@@ -2,11 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ChecklistDateOutsideMaterializationWindow;
 use App\Http\Requests\AdminHistoryRequest;
-use App\Models\DailyChecklist;
 use App\Models\TaskTemplate;
+use App\Models\WeeklyTaskTemplate;
+use App\Services\ChecklistWorkflow;
 use App\Services\DashboardPresenter;
 use App\Services\OperationalDate;
+use App\Services\StatisticsService;
+use Carbon\CarbonImmutable;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class AdminDashboardController extends Controller
@@ -15,24 +20,49 @@ class AdminDashboardController extends Controller
         AdminHistoryRequest $request,
         DashboardPresenter $presenter,
         OperationalDate $dates,
+        ChecklistWorkflow $workflow,
+        StatisticsService $statistics,
     ) {
         $date = $request->selectedDate($dates);
-        $dateString = $date->toDateString();
+
+        try {
+            $checklist = $workflow->forDate($date);
+        } catch (ChecklistDateOutsideMaterializationWindow) {
+            throw ValidationException::withMessages([
+                'date' => 'Senarai semak baharu hanya boleh dicipta dalam tempoh 365 hari dari hari ini.',
+            ]);
+        }
+
+        $validated = $request->validated();
+        $trackingStart = $statistics->trackingStart();
+        $to = isset($validated['stats_to']) ? $dates->fromDateString($validated['stats_to']) : $dates->today();
+        $to = $to->greaterThan($dates->today()) ? $dates->today() : $to;
+        $from = isset($validated['stats_from']) ? $dates->fromDateString($validated['stats_from']) : $to->subDays(29);
+        $minimum = CarbonImmutable::parse($trackingStart, $dates->timezone())->startOfDay();
+        $from = $from->lessThan($minimum) ? $minimum : $from;
+        $from = $from->lessThan($to->subDays(364)) ? $to->subDays(364) : $from;
 
         $templates = TaskTemplate::query()
             ->active()
+            ->with('taskSession:id,name')
+            ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
 
-        $completedTasks = DailyChecklist::query()
-            ->whereDate('date', $dateString)
-            ->with('completedBy:id,name,username')
+        $weeklyTemplates = WeeklyTaskTemplate::query()
+            ->active()
+            ->with('taskSession:id,name')
+            ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
 
-        return Inertia::render(
-            'Dashboard',
-            $presenter->admin($request, $date, $templates, $completedTasks),
-        );
+        return Inertia::render('Dashboard', $presenter->admin(
+            $request,
+            $date,
+            $templates,
+            $weeklyTemplates,
+            $checklist,
+            $statistics->build($from, $to),
+        ));
     }
 }

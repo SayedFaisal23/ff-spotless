@@ -7,53 +7,41 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class TaskTemplate extends Model
+class WeeklyTaskTemplate extends Model
 {
-    public $timestamps = false;
-
-    /**
-     * @var list<string>
-     */
     protected $fillable = [
         'task_name',
         'task_session_id',
+        'due_weekday',
         'credit_hours',
         'sort_order',
+        'starts_on',
         'is_active',
     ];
 
-    /**
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
-            'task_session_id' => 'integer',
+            'due_weekday' => 'integer',
             'credit_hours' => 'decimal:2',
             'sort_order' => 'integer',
+            'starts_on' => 'immutable_date',
             'is_active' => 'boolean',
         ];
     }
 
-    /**
-     * @param  Builder<TaskTemplate>  $query
-     * @return Builder<TaskTemplate>
-     */
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
     }
 
-    /**
-     * @return HasMany<DailyChecklist, $this>
-     */
-    public function dailyChecklists(): HasMany
-    {
-        return $this->hasMany(DailyChecklist::class);
-    }
-
     public function taskSession(): BelongsTo
     {
         return $this->belongsTo(TaskSession::class);
+    }
+
+    public function occurrences(): HasMany
+    {
+        return $this->hasMany(WeeklyTaskOccurrence::class);
     }
 }

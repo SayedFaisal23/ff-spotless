@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-use App\Enums\TaskSession;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DailyChecklist extends Model
 {
@@ -22,7 +22,9 @@ class DailyChecklist extends Model
         'date',
         'task_template_id',
         'task_name',
-        'session',
+        'task_session_id',
+        'session_name',
+        'credit_hours',
         'is_completed',
         'completed_at',
         'completed_by_user_id',
@@ -35,7 +37,8 @@ class DailyChecklist extends Model
     {
         return [
             'date' => 'immutable_date',
-            'session' => TaskSession::class,
+            'task_session_id' => 'integer',
+            'credit_hours' => 'decimal:2',
             'is_completed' => 'boolean',
             'completed_at' => 'immutable_datetime',
         ];
@@ -55,5 +58,15 @@ class DailyChecklist extends Model
     public function completedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'completed_by_user_id');
+    }
+
+    public function taskSession(): BelongsTo
+    {
+        return $this->belongsTo(TaskSession::class);
+    }
+
+    public function evidence(): HasMany
+    {
+        return $this->hasMany(DailyTaskEvidence::class);
     }
 }

@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Enums\TaskSession;
 use App\Exceptions\ChecklistDateOutsideMaterializationWindow;
 use App\Models\DailyChecklist;
 use App\Models\TaskTemplate;
@@ -18,11 +17,7 @@ class ChecklistMaterializer
     ) {}
 
     /**
-     * Return the immutable task snapshot for a date, creating it once when needed.
-     *
      * @return Collection<int, DailyChecklist>
-     *
-     * @throws ChecklistDateOutsideMaterializationWindow
      */
     public function forDate(CarbonImmutable $date): Collection
     {
@@ -30,9 +25,6 @@ class ChecklistMaterializer
 
         if (! $this->isMaterialized($dateString)) {
             DB::transaction(function () use ($date, $dateString): void {
-                // The same durable row is locked while a template is created
-                // and while a new day is cloned. This closes the race where a
-                // new template could otherwise miss a concurrently-created sheet.
                 $this->acquireTemplateSynchronizationLock();
 
                 if ($this->isMaterialized($dateString)) {
@@ -43,110 +35,128 @@ class ChecklistMaterializer
                     throw new ChecklistDateOutsideMaterializationWindow;
                 }
 
-                // This ledger makes an empty sheet an immutable snapshot too.
-                DB::table('checklist_materializations')->insert([
-                    'date' => $dateString,
-                ]);
+                DB::table('checklist_materializations')->insert(['date' => $dateString]);
 
                 $templates = TaskTemplate::query()
                     ->active()
+                    ->with('taskSession:id,name')
+                    ->orderBy('sort_order')
                     ->orderBy('id')
-                    ->get(['id', 'task_name', 'session']);
+                    ->get();
 
-                if ($templates->isEmpty()) {
-                    return;
-                }
-
-                $rows = $templates->map(function (TaskTemplate $template) use ($dateString): array {
-                    $session = $template->session;
-
-                    return [
-                        'date' => $dateString,
-                        'task_template_id' => $template->id,
-                        'task_name' => $template->task_name,
-                        'session' => $session instanceof TaskSession ? $session->value : $session,
-                        'is_completed' => false,
-                        'completed_at' => null,
-                        'completed_by_user_id' => null,
-                    ];
-                })->all();
-
-                // The unique index remains a final guard for database-level
-                // integrity if data is ever imported outside this service.
-                DailyChecklist::query()->insertOrIgnore($rows);
-            }, 3);
-        }
-
-        return DailyChecklist::query()
-            ->whereDate('date', $dateString)
-            ->orderBy('id')
-            ->get();
-    }
-
-    /**
-     * Add a newly-created template to every existing current/future daily sheet.
-     * Historical snapshots are intentionally not changed.
-     */
-    public function appendTemplateToCurrentAndFutureSheets(TaskTemplate $template): void
-    {
-        $today = $this->dates->today()->toDateString();
-
-        DB::transaction(function () use ($template, $today): void {
-            $this->acquireTemplateSynchronizationLock();
-
-            $dateStrings = DB::table('checklist_materializations')
-                ->whereDate('date', '>=', $today)
-                ->orderBy('date')
-                ->pluck('date');
-
-            if ($dateStrings->isEmpty()) {
-                return;
-            }
-
-            $session = $template->session;
-            $sessionValue = $session instanceof TaskSession ? $session->value : $session;
-
-            $dateStrings->chunk(500)->each(function ($dates) use ($template, $sessionValue): void {
-                $rows = $dates->map(fn (string $date): array => [
-                    'date' => $date,
+                $rows = $templates->map(static fn (TaskTemplate $template): array => [
+                    'date' => $dateString,
                     'task_template_id' => $template->id,
                     'task_name' => $template->task_name,
-                    'session' => $sessionValue,
+                    'task_session_id' => $template->task_session_id,
+                    'session_name' => $template->taskSession->name,
+                    'credit_hours' => $template->credit_hours,
                     'is_completed' => false,
                     'completed_at' => null,
                     'completed_by_user_id' => null,
                 ])->all();
 
-                DailyChecklist::query()->insertOrIgnore($rows);
-            });
+                if ($rows !== []) {
+                    DailyChecklist::query()->insertOrIgnore($rows);
+                }
+            }, 3);
+        }
+
+        return DailyChecklist::query()
+            ->whereDate('date', $dateString)
+            ->withCount('evidence')
+            ->orderBy('id')
+            ->get();
+    }
+
+    public function catchUpThrough(CarbonImmutable $date): void
+    {
+        $startedOn = DB::table('statistics_tracking')->value('started_on');
+
+        if (! is_string($startedOn)) {
+            return;
+        }
+
+        $cursor = $this->dates->fromDateString($startedOn);
+        $last = $date->startOfDay();
+        $materialized = DB::table('checklist_materializations')
+            ->whereDate('date', '>=', $cursor->toDateString())
+            ->whereDate('date', '<=', $last->toDateString())
+            ->pluck('date')
+            ->mapWithKeys(static fn ($value): array => [substr((string) $value, 0, 10) => true]);
+
+        while ($cursor->lessThanOrEqualTo($last)) {
+            if (! $materialized->has($cursor->toDateString())) {
+                $this->forDate($cursor);
+            }
+            $cursor = $cursor->addDay();
+        }
+    }
+
+    public function appendTemplateToCurrentAndFutureSheets(TaskTemplate $template): void
+    {
+        $today = $this->dates->today()->toDateString();
+        $template->loadMissing('taskSession:id,name');
+
+        DB::transaction(function () use ($template, $today): void {
+            $this->acquireTemplateSynchronizationLock();
+
+            DB::table('checklist_materializations')
+                ->whereDate('date', '>=', $today)
+                ->orderBy('date')
+                ->pluck('date')
+                ->chunk(500)
+                ->each(function ($dates) use ($template): void {
+                    $rows = $dates->map(static fn (string $date): array => [
+                        'date' => $date,
+                        'task_template_id' => $template->id,
+                        'task_name' => $template->task_name,
+                        'task_session_id' => $template->task_session_id,
+                        'session_name' => $template->taskSession->name,
+                        'credit_hours' => $template->credit_hours,
+                        'is_completed' => false,
+                        'completed_at' => null,
+                        'completed_by_user_id' => null,
+                    ])->all();
+
+                    DailyChecklist::query()->insertOrIgnore($rows);
+                });
         }, 3);
     }
 
-    /**
-     * Update the master template and only the incomplete operational rows that
-     * have not become historical yet.
-     */
     public function updateTemplateAndCurrentAndFutureIncompleteSnapshots(
         TaskTemplate $template,
         string $taskName,
-        string $session,
+        int $sessionId,
+        string $sessionName,
+        string $creditHours,
     ): bool {
         $today = $this->dates->today()->toDateString();
 
-        return DB::transaction(function () use ($template, $taskName, $session, $today): bool {
+        return DB::transaction(function () use ($template, $taskName, $sessionId, $sessionName, $creditHours, $today): bool {
             $this->acquireTemplateSynchronizationLock();
-
-            $lockedTemplate = TaskTemplate::query()
-                ->lockForUpdate()
-                ->findOrFail($template->getKey());
+            $lockedTemplate = TaskTemplate::query()->lockForUpdate()->findOrFail($template->getKey());
 
             if (! $lockedTemplate->is_active) {
                 return false;
             }
 
+            if ($lockedTemplate->task_session_id !== $sessionId) {
+                $taskIds = DailyChecklist::query()
+                    ->where('task_template_id', $lockedTemplate->getKey())
+                    ->whereDate('date', '>=', $today)
+                    ->where('is_completed', false)
+                    ->pluck('id');
+                DB::table('checklist_item_positions')
+                    ->where('item_type', 'daily')
+                    ->whereIn('item_id', $taskIds)
+                    ->delete();
+            }
+
             $lockedTemplate->forceFill([
                 'task_name' => $taskName,
-                'session' => $session,
+                'task_session_id' => $sessionId,
+                'credit_hours' => $creditHours,
             ])->save();
 
             DailyChecklist::query()
@@ -155,47 +165,56 @@ class ChecklistMaterializer
                 ->where('is_completed', false)
                 ->update([
                     'task_name' => $taskName,
-                    'session' => $session,
+                    'task_session_id' => $sessionId,
+                    'session_name' => $sessionName,
+                    'credit_hours' => $creditHours,
                 ]);
 
             return true;
         }, 3);
     }
 
-    /**
-     * Retire a template without deleting historical or completed snapshots.
-     */
+    public function renameSessionSnapshots(int $sessionId, string $name): void
+    {
+        DailyChecklist::query()
+            ->where('task_session_id', $sessionId)
+            ->whereDate('date', '>=', $this->dates->today()->toDateString())
+            ->where('is_completed', false)
+            ->update(['session_name' => $name]);
+    }
+
     public function deactivateTemplateAndRemoveCurrentAndFutureIncompleteSnapshots(TaskTemplate $template): void
     {
         $today = $this->dates->today()->toDateString();
 
         DB::transaction(function () use ($template, $today): void {
             $this->acquireTemplateSynchronizationLock();
+            $lockedTemplate = TaskTemplate::query()->lockForUpdate()->findOrFail($template->getKey());
+            $lockedTemplate->forceFill(['is_active' => false])->save();
 
-            $lockedTemplate = TaskTemplate::query()
-                ->lockForUpdate()
-                ->findOrFail($template->getKey());
-
-            $lockedTemplate->forceFill([
-                'is_active' => false,
-            ])->save();
-
-            DailyChecklist::query()
+            $taskIds = DailyChecklist::query()
                 ->where('task_template_id', $lockedTemplate->getKey())
                 ->whereDate('date', '>=', $today)
                 ->where('is_completed', false)
+                ->pluck('id');
+
+            DB::table('checklist_item_positions')
+                ->where('item_type', 'daily')
+                ->whereIn('item_id', $taskIds)
+                ->delete();
+
+            DailyChecklist::query()
+                ->whereKey($taskIds)
                 ->delete();
         }, 3);
     }
 
     private function isMaterialized(string $date): bool
     {
-        return DB::table('checklist_materializations')
-            ->whereDate('date', $date)
-            ->exists();
+        return DB::table('checklist_materializations')->whereDate('date', $date)->exists();
     }
 
-    private function acquireTemplateSynchronizationLock(): void
+    public function acquireTemplateSynchronizationLock(): void
     {
         $lock = DB::table('checklist_sync_locks')
             ->where('name', 'template-synchronization')

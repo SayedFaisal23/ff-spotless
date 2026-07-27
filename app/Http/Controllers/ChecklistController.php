@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\ChecklistDateOutsideMaterializationWindow;
 use App\Http\Requests\ChecklistDateRequest;
-use App\Services\ChecklistMaterializer;
+use App\Services\ChecklistWorkflow;
 use App\Services\DashboardPresenter;
 use App\Services\OperationalDate;
 use Illuminate\Validation\ValidationException;
@@ -14,14 +14,14 @@ class ChecklistController extends Controller
 {
     public function index(
         ChecklistDateRequest $request,
-        ChecklistMaterializer $materializer,
+        ChecklistWorkflow $workflow,
         DashboardPresenter $presenter,
         OperationalDate $dates,
     ) {
         $date = $request->selectedDate($dates);
 
         try {
-            $checklist = $materializer->forDate($date);
+            $checklist = $workflow->forDate($date);
         } catch (ChecklistDateOutsideMaterializationWindow) {
             throw ValidationException::withMessages([
                 'date' => 'Senarai semak baharu hanya boleh dicipta dalam tempoh 365 hari dari hari ini.',

@@ -53,6 +53,21 @@ The manifest and FF Spotless icons are served from `public/`. The Vite PWA build
 
 The Inertia application registers the Vite-generated service worker and includes the manifest/theme metadata in its root layout. This enables installation only over HTTPS (or `localhost` during development).
 
+## Checklist operations
+
+- Admins manage ordered sessions, daily task templates, weekly task templates,
+  credit hours, history, evidence, and statistics from the admin dashboard.
+- Weekly tasks are available from Monday, may be completed early, and roll
+  forward through Sunday when incomplete or when a day is marked MC/not
+  available.
+- Every completion requires JPEG, PNG, or WebP evidence. Evidence is stored on
+  Laravel's private `local` disk and is streamed only through an authenticated
+  admin route. Do not create a public symlink to `storage/app/private`.
+- The upload UI reflects PHP's `max_file_uploads`, `upload_max_filesize`, and
+  `post_max_size`. Each individual image is additionally limited to 10 MB.
+- Comparable missed-task and credit statistics begin on the date the feature
+  migration is applied. Earlier completion history remains available.
+
 ## Hostinger deployment
 
 Hostinger Git deployment pulls from the `production` branch. Commit and push
@@ -122,6 +137,11 @@ php artisan optimize:clear
 php artisan config:cache
 php artisan route:cache
 ```
+
+Before applying the configurable-session migration, back up both the MySQL
+database and `storage/app/private`. Ensure `storage/app/private/evidence` can be
+written by PHP but cannot be served directly by Apache. Review the hosting
+account's PHP upload limits before enabling evidence uploads.
 
 Changing `CHECKLIST_ADMIN_PASSWORD` in `private/.env` takes effect after the config cache is rebuilt and PHP has reloaded. Never deploy the development default of `12345678`; replace it with a strong secret in `private/.env`. The password is never stored in the session; the configured session only records successful master-admin authentication.
 
