@@ -38,6 +38,7 @@ const editing = ref(null);
 const sessionEditing = ref(null);
 const sortables = [];
 let noticeTimer;
+let themeTransitionTimer;
 
 const dailyForm = ref({ task_name: '', task_session_id: '', credit_hours: 1 });
 const weeklyForm = ref({ task_name: '', task_session_id: '', due_weekday: 1, credit_hours: 1 });
@@ -65,6 +66,9 @@ const completedCount = computed(() => localTasks.value.filter((task) => task.com
 const progress = computed(() => localTasks.value.length ? Math.round((completedCount.value / localTasks.value.length) * 100) : 0);
 const statsMax = computed(() => Math.max(1, ...(props.statistics?.trend ?? []).map((row) => row.completed + row.missed + row.pending)));
 const adminTitle = computed(() => adminTabs.find((tab) => tab.key === adminTab.value)?.label ?? 'Dashboard');
+const themeToggleLabel = computed(() => theme.value === 'light'
+    ? 'Light mode active. Switch to dark mode'
+    : 'Dark mode active. Switch to light mode');
 
 watch(() => [props.mode, props.currentDate, props.tasks, props.dayUnavailable], async () => {
     screen.value = resolveScreen();
@@ -91,6 +95,8 @@ watch(activeSessions, (sessions) => {
 onBeforeUnmount(() => {
     destroySortables();
     clearEvidenceFiles();
+    if (typeof window !== 'undefined') window.clearTimeout(themeTransitionTimer);
+    if (typeof document !== 'undefined') document.documentElement.classList.remove('theme-transitioning');
 });
 
 function collectionItems(value) {
@@ -100,6 +106,18 @@ function collectionItems(value) {
 function resolveScreen() {
     if (['welcome', 'checklist', 'admin'].includes(props.mode)) return props.mode;
     return props.auth?.isAdmin ? 'admin' : 'welcome';
+}
+
+function toggleTheme() {
+    if (typeof window !== 'undefined' && typeof document !== 'undefined'
+        && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const root = document.documentElement;
+        root.classList.add('theme-transitioning');
+        window.clearTimeout(themeTransitionTimer);
+        themeTransitionTimer = window.setTimeout(() => root.classList.remove('theme-transitioning'), 180);
+    }
+
+    theme.value = theme.value === 'light' ? 'dark' : 'light';
 }
 
 function sessionTasks(sessionId) {
@@ -445,8 +463,16 @@ function chooseAdminDate(event) {
         <main v-else-if="screen === 'checklist'" class="mx-auto min-h-screen max-w-3xl">
             <header class="sticky top-0 z-20 border-b border-zinc-800 bg-[#121212]/95 px-5 py-4 backdrop-blur">
                 <div class="flex items-center justify-between">
-                    <button class="text-sm font-bold text-zinc-400" @click="router.get('/')">← Keluar</button>
-                    <button class="rounded-lg border border-zinc-700 px-3 py-2 text-xs" @click="theme = theme === 'light' ? 'dark' : 'light'">{{ theme === 'light' ? 'Gelap' : 'Cerah' }}</button>
+                    <button type="button" class="cleaner-logout text-sm font-bold" @click="router.get('/')">← Log Keluar</button>
+                    <button type="button" class="theme-toggle rounded-lg border border-zinc-700" :aria-label="themeToggleLabel" :title="themeToggleLabel" @click="toggleTheme">
+                        <svg v-if="theme === 'light'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <circle cx="12" cy="12" r="4"></circle>
+                            <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke-linecap="round"></path>
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z" stroke-linejoin="round"></path>
+                        </svg>
+                    </button>
                 </div>
                 <div class="mt-4 flex items-center gap-3">
                     <button :disabled="busy" class="h-10 w-10 rounded-xl border border-zinc-700" @click="openChecklist(dateOffset(selectedDate, -1))">‹</button>
@@ -511,11 +537,19 @@ function chooseAdminDate(event) {
                     <h1 class="mt-1 text-xl font-black">FF Spotless</h1>
                 </div>
                 <nav class="mt-8 space-y-2">
-                    <button v-for="tab in adminTabs" :key="tab.key" class="w-full rounded-xl border px-4 py-3 text-left text-sm font-bold" :class="adminTab === tab.key ? 'border-[#ED4264]/40 bg-[#ED4264]/10 text-rose-200' : 'border-transparent text-zinc-400 hover:border-zinc-700 hover:text-zinc-100'" @click="adminTab = tab.key">{{ tab.label }}</button>
+                    <button v-for="tab in adminTabs" :key="tab.key" class="admin-tab w-full rounded-xl border px-4 py-3 text-left text-sm font-bold" :class="adminTab === tab.key ? 'admin-tab-active border-[#ED4264]/40 bg-[#ED4264]/10 text-rose-200' : 'border-transparent text-zinc-400 hover:border-zinc-700 hover:text-zinc-100'" @click="adminTab = tab.key">{{ tab.label }}</button>
                 </nav>
-                <div class="mt-auto space-y-2">
-                    <button class="w-full rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold" @click="theme = theme === 'light' ? 'dark' : 'light'">{{ theme === 'light' ? 'Dark mode' : 'Light mode' }}</button>
-                    <button class="w-full rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold text-rose-300" @click="logoutAdmin">Log out</button>
+                <div class="mt-auto flex items-center gap-2">
+                    <button class="h-10 flex-1 rounded-lg border border-zinc-700 px-3 text-xs font-bold text-rose-300" @click="logoutAdmin">Log out</button>
+                    <button type="button" class="theme-toggle shrink-0 rounded-lg border border-zinc-700" :aria-label="themeToggleLabel" :title="themeToggleLabel" @click="toggleTheme">
+                        <svg v-if="theme === 'light'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <circle cx="12" cy="12" r="4"></circle>
+                            <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke-linecap="round"></path>
+                        </svg>
+                        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z" stroke-linejoin="round"></path>
+                        </svg>
+                    </button>
                 </div>
             </aside>
 
@@ -527,12 +561,20 @@ function chooseAdminDate(event) {
                             <h1 class="text-lg font-black">FF Spotless</h1>
                         </div>
                         <div class="flex gap-2">
-                            <button class="rounded-lg border border-zinc-700 px-3 py-2 text-xs" @click="theme = theme === 'light' ? 'dark' : 'light'">{{ theme === 'light' ? 'Dark' : 'Light' }}</button>
-                            <button class="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold" @click="logoutAdmin">Log out</button>
+                            <button class="h-10 rounded-lg border border-zinc-700 px-3 text-xs font-bold" @click="logoutAdmin">Log out</button>
+                            <button type="button" class="theme-toggle shrink-0 rounded-lg border border-zinc-700" :aria-label="themeToggleLabel" :title="themeToggleLabel" @click="toggleTheme">
+                                <svg v-if="theme === 'light'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="4"></circle>
+                                    <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" stroke-linecap="round"></path>
+                                </svg>
+                                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                    <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z" stroke-linejoin="round"></path>
+                                </svg>
+                            </button>
                         </div>
                     </div>
                     <nav class="mt-4 flex gap-2 overflow-x-auto pb-1">
-                        <button v-for="tab in adminTabs" :key="tab.key" class="shrink-0 rounded-xl border px-3 py-2 text-xs font-bold" :class="adminTab === tab.key ? 'border-[#ED4264]/40 bg-[#ED4264]/10 text-rose-200' : 'border-zinc-700 text-zinc-400'" @click="adminTab = tab.key">{{ tab.label }}</button>
+                        <button v-for="tab in adminTabs" :key="tab.key" class="admin-tab shrink-0 rounded-xl border px-3 py-2 text-xs font-bold" :class="adminTab === tab.key ? 'admin-tab-active border-[#ED4264]/40 bg-[#ED4264]/10 text-rose-200' : 'border-zinc-700 text-zinc-400'" @click="adminTab = tab.key">{{ tab.label }}</button>
                     </nav>
                 </header>
 
@@ -706,13 +748,54 @@ function chooseAdminDate(event) {
 .primary-button:disabled { opacity: .5; }
 .small-button { border: 1px solid rgb(82 82 91); border-radius: .6rem; padding: .45rem .65rem; font-size: .7rem; font-weight: 700; }
 .small-button:disabled { opacity: .25; }
+.theme-toggle { display: inline-flex; width: 2.5rem; height: 2.5rem; align-items: center; justify-content: center; }
+.theme-toggle svg { width: 1.125rem; height: 1.125rem; }
+.cleaner-logout { color: #fb7185; }
+.cleaner-logout:hover { color: #fda4af; }
+.theme-toggle:focus-visible,
+.cleaner-logout:focus-visible { outline: 2px solid #fb7185; outline-offset: 3px; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; overflow-y: auto; background: rgb(0 0 0 / .78); padding: 1rem; }
 .modal-card { width: 100%; max-width: 32rem; max-height: 92vh; overflow-y: auto; border: 1px solid rgb(82 82 91); border-radius: 1rem; background: #171717; padding: 1.25rem; box-shadow: 0 25px 50px -12px rgb(0 0 0 / .7); }
 .theme-light { background: #f8fafc; color: #18181b; }
 .theme-light :is(header, .modal-card, [class*="bg-[#121212]"]) { background-color: #f8fafc; }
 .theme-light [class*="bg-zinc-900"] { background-color: #fff; }
+.theme-light [class*="bg-zinc-800"] { background-color: #e4e4e7; }
+.theme-light [class*="bg-rose-950"] { background-color: #fff1f2; }
+.theme-light [class*="bg-emerald-950"] { background-color: #ecfdf5; }
 .theme-light [class*="text-zinc-100"] { color: #18181b; }
+.theme-light [class*="text-zinc-300"] { color: #3f3f46; }
 .theme-light [class*="text-zinc-400"], .theme-light [class*="text-zinc-500"] { color: #52525b; }
+.theme-light [class*="text-zinc-600"] { color: #71717a; }
+.theme-light [class*="text-rose-100"],
+.theme-light [class*="text-rose-200"],
+.theme-light [class*="text-rose-300"] { color: #be123c; }
+.theme-light [class*="text-emerald-100"], .theme-light [class*="text-emerald-300"] { color: #047857; }
+.theme-light [class*="text-amber-300"] { color: #a16207; }
+.theme-light [class*="text-sky-300"] { color: #0369a1; }
+.theme-light [class*="text-violet-300"] { color: #6d28d9; }
+.theme-light [class*="border-zinc-600"] { border-color: #a1a1aa; }
 .theme-light [class*="border-zinc-700"], .theme-light [class*="border-zinc-800"] { border-color: #d4d4d8; }
+.theme-light .field,
+.theme-light .small-button,
+.theme-light .theme-toggle { background-color: #fff; border-color: #cbd5e1; color: #18181b; color-scheme: light; }
+.theme-light .field { caret-color: #be123c; }
+.theme-light .field::placeholder { color: #71717a; opacity: 1; }
+.theme-light .field:focus { border-color: #e11d48; box-shadow: 0 0 0 3px rgb(225 29 72 / .12); }
+.theme-light .field option { background-color: #fff; color: #18181b; }
+.theme-light .small-button:hover,
+.theme-light .theme-toggle:hover { background-color: #f1f5f9; border-color: #94a3b8; }
+.theme-light .theme-toggle:focus-visible,
+.theme-light .cleaner-logout:focus-visible { outline-color: #be123c; }
+.theme-light .cleaner-logout { color: #be123c; }
+.theme-light .cleaner-logout:hover { color: #9f1239; }
+.theme-light .admin-tab-active { background-color: #fff1f2; border-color: #fda4af; color: #be123c; }
+.theme-light .admin-tab:not(.admin-tab-active):hover { background-color: #fff; border-color: #cbd5e1; color: #18181b; }
 @media (min-width: 640px) { .modal-backdrop { align-items: center; } }
+@media (min-width: 64rem) {
+    .field,
+    .primary-button { font-size: .9375rem; }
+    .primary-button,
+    .small-button { font-weight: 600; }
+    .small-button { font-size: .8125rem; }
+}
 </style>

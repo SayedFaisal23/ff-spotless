@@ -1,56 +1,4 @@
 {
-  "_fonts-C3C6f_HD.css": {
-    "file": "assets/fonts-C3C6f_HD.css",
-    "src": "_fonts-C3C6f_HD.css"
-  },
-  "_poppins-400-normal-BOb3E3N0.woff": {
-    "file": "assets/poppins-400-normal-BOb3E3N0.woff",
-    "src": "_poppins-400-normal-BOb3E3N0.woff"
-  },
-  "_poppins-400-normal-cpxAROuN.woff2": {
-    "file": "assets/poppins-400-normal-cpxAROuN.woff2",
-    "src": "_poppins-400-normal-cpxAROuN.woff2"
-  },
-  "_poppins-500-normal-C8OXljZJ.woff2": {
-    "file": "assets/poppins-500-normal-C8OXljZJ.woff2",
-    "src": "_poppins-500-normal-C8OXljZJ.woff2"
-  },
-  "_poppins-500-normal-DGXqpDMm.woff": {
-    "file": "assets/poppins-500-normal-DGXqpDMm.woff",
-    "src": "_poppins-500-normal-DGXqpDMm.woff"
-  },
-  "_poppins-600-normal-BJdTmd5m.woff": {
-    "file": "assets/poppins-600-normal-BJdTmd5m.woff",
-    "src": "_poppins-600-normal-BJdTmd5m.woff"
-  },
-  "_poppins-600-normal-zEkxB9Mr.woff2": {
-    "file": "assets/poppins-600-normal-zEkxB9Mr.woff2",
-    "src": "_poppins-600-normal-zEkxB9Mr.woff2"
-  },
-  "_poppins-700-normal-BVuQR_eA.woff": {
-    "file": "assets/poppins-700-normal-BVuQR_eA.woff",
-    "src": "_poppins-700-normal-BVuQR_eA.woff"
-  },
-  "_poppins-700-normal-Qrb0O0WB.woff2": {
-    "file": "assets/poppins-700-normal-Qrb0O0WB.woff2",
-    "src": "_poppins-700-normal-Qrb0O0WB.woff2"
-  },
-  "_poppins-800-normal-Bd8-pIP1.woff2": {
-    "file": "assets/poppins-800-normal-Bd8-pIP1.woff2",
-    "src": "_poppins-800-normal-Bd8-pIP1.woff2"
-  },
-  "_poppins-800-normal-YoItoZZV.woff": {
-    "file": "assets/poppins-800-normal-YoItoZZV.woff",
-    "src": "_poppins-800-normal-YoItoZZV.woff"
-  },
-  "_poppins-900-normal-BmL1zqjw.woff2": {
-    "file": "assets/poppins-900-normal-BmL1zqjw.woff2",
-    "src": "_poppins-900-normal-BmL1zqjw.woff2"
-  },
-  "_poppins-900-normal-By5LX1Cr.woff": {
-    "file": "assets/poppins-900-normal-By5LX1Cr.woff",
-    "src": "_poppins-900-normal-By5LX1Cr.woff"
-  },
   "node_modules/workbox-window/build/workbox-window.prod.es5.mjs": {
     "file": "assets/workbox-window.prod.es5-Bd17z0YL.js",
     "name": "workbox-window.prod.es5",
@@ -58,7 +6,7 @@
     "isDynamicEntry": true
   },
   "resources/css/app.css": {
-    "file": "assets/app-BY9r1VWu.css",
+    "file": "assets/app-DfiRwOVP.css",
     "name": "app",
     "names": [
       "app.css"
@@ -67,7 +15,7 @@
     "isEntry": true
   },
   "resources/js/Pages/Dashboard.vue": {
-    "file": "assets/Dashboard-aeAH096w.js",
+    "file": "assets/Dashboard-ShxVw6fc.js",
     "name": "Dashboard",
     "src": "resources/js/Pages/Dashboard.vue",
     "isDynamicEntry": true,
@@ -75,11 +23,11 @@
       "resources/js/app.js"
     ],
     "css": [
-      "assets/Dashboard-Cwu135ae.css"
+      "assets/Dashboard-BmXK2fRh.css"
     ]
   },
   "resources/js/app.js": {
-    "file": "assets/app-CuGoQqUj.js",
+    "file": "assets/app-BTI-MFlz.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
