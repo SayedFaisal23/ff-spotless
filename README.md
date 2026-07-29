@@ -47,6 +47,31 @@ docker compose down
 
 `docker compose down -v` also deletes the local MySQL volume and all local checklist data.
 
+## Docker development with live reload
+
+Use the development Compose file when you are editing the application. It mounts the source code into the app container and starts Vite for Vue and CSS hot reload; the main Compose file remains production-style.
+
+Start it once (and after changes to `composer.lock` or the Docker configuration):
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+```
+
+After that, changes to PHP, Vue, CSS, routes, and configuration files are available without rebuilding Docker. Vue and CSS changes reload automatically; refresh the browser for PHP changes.
+
+If `package-lock.json` changes, restart Vite so it installs the updated JavaScript dependencies:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml restart vite
+```
+
+To return to the production-style Compose setup, stop the development stack, then start the main file again:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+docker compose -f docker-compose.yml up --build -d
+```
+
 ## PWA behavior
 
 The manifest and FF Spotless icons are served from `public/`. The Vite PWA build generates the service worker, which precaches only Vite build output and PWA assets. It deliberately never caches navigation, Inertia, authenticated, or POST responses, so checklist reads and writes always reach the server.

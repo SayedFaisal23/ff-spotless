@@ -545,14 +545,7 @@ function chooseAdminDate(event) {
             </header>
 
             <section class="px-5 pt-5">
-                <label class="flex items-start gap-3 rounded-2xl border p-4" :class="dayUnavailable ? 'border-rose-500/40 bg-rose-500/10' : 'border-zinc-700 bg-zinc-900/50'">
-                    <input type="checkbox" class="mt-1 h-5 w-5 accent-[#ED4264]" :checked="dayUnavailable" :disabled="!isToday || busy" @change="toggleAvailability">
-                    <span>
-                        <strong class="block text-sm">MC / tidak tersedia hari ini</strong>
-                        <span class="mt-1 block text-xs leading-relaxed text-zinc-400">Mengunci tugasan harian dan memindahkan tugasan mingguan yang perlu dibuat hari ini.</span>
-                    </span>
-                </label>
-                <div v-if="isReadOnly" class="mt-3 rounded-xl border border-zinc-700 bg-zinc-900/40 p-3 text-xs text-zinc-400">Tarikh lampau dan masa hadapan adalah baca sahaja.</div>
+                <div v-if="isReadOnly" class="rounded-xl border border-zinc-700 bg-zinc-900/40 p-3 text-xs text-zinc-400">Tarikh lampau dan masa hadapan adalah baca sahaja.</div>
                 <div class="mt-5 h-1.5 overflow-hidden rounded-full bg-zinc-800"><div class="h-full bg-gradient-to-r from-[#ED4264] to-[#FFEDBC]" :style="{ width: `${progress}%` }"></div></div>
                 <div class="mt-2 flex justify-between text-xs text-zinc-400"><span>{{ completedCount }} daripada {{ localTasks.length }} selesai</span><span>{{ progress }}%</span></div>
             </section>
@@ -565,17 +558,23 @@ function chooseAdminDate(event) {
                         <span class="rounded-full border border-zinc-700 px-2.5 py-1 text-[10px] font-bold text-zinc-400">{{ sessionCredits(sessionTasks(session.id)) }} jam kredit</span>
                     </header>
                     <div class="space-y-2" :data-sortable-session="session.id">
-                        <article v-for="(task, taskIndex) in sessionTasks(session.id)" :key="task.key" :data-task-key="task.key" class="flex items-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-900 p-3">
+                        <article v-for="(task, taskIndex) in sessionTasks(session.id)" :key="task.key" :data-task-key="task.key" class="flex items-center gap-2 rounded-2xl border p-3" :class="dayUnavailable && !task.completed ? 'border-zinc-800 bg-zinc-900/40 opacity-60' : 'border-zinc-700 bg-zinc-900'">
                             <button v-if="isToday && !dayUnavailable" class="drag-handle cursor-grab px-1 text-lg text-zinc-500" aria-label="Seret untuk menyusun">⋮⋮</button>
-                            <button class="min-w-0 flex-1 text-left" :disabled="locked || task.completed" @click="openEvidence(task)">
+                            <button class="min-w-0 flex-1 text-left" :class="dayUnavailable && !task.completed ? 'cursor-not-allowed' : ''" :disabled="locked || task.completed" @click="openEvidence(task)">
                                 <span class="flex items-center gap-2">
                                     <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2" :class="task.completed ? 'border-[#ED4264] bg-[#ED4264] text-white' : 'border-zinc-600'">{{ task.completed ? '✓' : '' }}</span>
                                     <span class="min-w-0">
                                         <span class="block text-sm font-semibold" :class="task.completed ? 'text-zinc-500 line-through' : 'text-zinc-100'">{{ task.text }}</span>
                                         <span class="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase text-zinc-500">
                                             <span>{{ task.creditHours }} jam</span>
-                                            <span v-if="task.isWeekly" class="text-sky-300">Mingguan · sebelum {{ displayDate(task.originalDueDate) }}</span>
-                                            <span v-if="task.postponedCount">Ditunda {{ task.postponedCount }}×</span>
+                                            <template v-if="task.isWeekly">
+                                                <span aria-hidden="true">|</span>
+                                                <span class="text-sky-300">Mingguan · sebelum {{ displayDate(task.originalDueDate) }}</span>
+                                                <template v-if="task.postponedCount">
+                                                    <span aria-hidden="true">|</span>
+                                                    <span>Ditunda {{ task.postponedCount }}×</span>
+                                                </template>
+                                            </template>
                                         </span>
                                     </span>
                                 </span>
@@ -587,6 +586,16 @@ function chooseAdminDate(event) {
                         </article>
                     </div>
                 </section>
+            </section>
+
+            <section class="px-5 pb-6">
+                <label class="flex items-start gap-3 rounded-2xl border p-4" :class="dayUnavailable ? 'border-rose-500/40 bg-rose-500/10' : 'border-zinc-700 bg-zinc-900/50'">
+                    <input type="checkbox" class="mt-1 h-5 w-5 accent-[#ED4264]" :checked="dayUnavailable" :disabled="!isToday || busy" @change="toggleAvailability">
+                    <span>
+                        <strong class="block text-sm">MC / tidak tersedia hari ini</strong>
+                        <span class="mt-1 block text-xs leading-relaxed text-zinc-400">Mengunci tugasan harian dan memindahkan tugasan mingguan yang perlu dibuat hari ini.</span>
+                    </span>
+                </label>
             </section>
         </main>
 

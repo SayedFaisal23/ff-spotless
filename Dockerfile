@@ -55,3 +55,12 @@ RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/fra
 EXPOSE 80
 
 CMD ["apache2-foreground"]
+
+FROM application AS development
+
+COPY --from=composer /usr/bin/composer /usr/local/bin/composer
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends git unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM application AS production
