@@ -35,7 +35,7 @@ FF Spotless is a mobile-first Laravel checklist application. It runs with PHP 8.
    docker compose exec app php artisan route:list
    ```
 
-The application is available at [http://localhost:8096](http://localhost:8096). MySQL is intentionally bound only to `127.0.0.1:8097`; connect with the database credentials in `.env`.
+The application is available at [http://localhost:8108](http://localhost:8108). MySQL is intentionally bound only to `127.0.0.1:8097`; connect with the database credentials in `.env`.
 
 Useful commands:
 
