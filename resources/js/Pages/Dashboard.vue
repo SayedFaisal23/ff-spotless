@@ -152,6 +152,13 @@ function sessionCredits(items) {
     return items.reduce((sum, item) => sum + Number(item.creditHours || 0), 0).toFixed(2).replace(/\.00$/, '');
 }
 
+function sessionCreditsByType(items, type) {
+    return items
+        .filter((item) => item.type === type)
+        .reduce((sum, item) => sum + Number(item.creditHours || 0), 0)
+        .toFixed(2);
+}
+
 function sessionTone(index) {
     return ['text-amber-300', 'text-sky-300', 'text-violet-300', 'text-emerald-300', 'text-rose-300'][index % 5];
 }
@@ -713,10 +720,10 @@ function chooseAdminDate(event) {
                             <span class="text-sm font-black text-zinc-300">{{ displayAdminDate(adminDate) }}</span>
                         </div>
                         <section v-for="(session, index) in sessions" :key="session.id" v-show="historyFor(session.id).length">
-                            <header class="mb-3 flex justify-between"><h2 class="font-black uppercase" :class="sessionTone(index)">{{ session.name }}</h2><span class="text-xs text-zinc-500">{{ sessionCredits(historyFor(session.id)) }} credit hrs</span></header>
+                            <header class="mb-3 flex items-center justify-between gap-3"><h2 class="font-black uppercase" :class="sessionTone(index)">{{ session.name }}</h2><span class="shrink-0 text-xs text-zinc-500">{{ sessionCreditsByType(historyFor(session.id), 'daily') }} ch/day <span aria-hidden="true">•</span> {{ sessionCreditsByType(historyFor(session.id), 'weekly') }} ch/week</span></header>
                             <div class="grid gap-2 md:grid-cols-2">
                                 <button v-for="entry in historyFor(session.id)" :key="entry.key" class="rounded-xl border border-zinc-700 bg-zinc-900 p-4 text-left disabled:cursor-default" :disabled="!entry.evidence?.length" @click="viewingEvidence = entry">
-                                    <div class="flex justify-between gap-3"><strong class="text-sm">{{ entry.text }}</strong><span class="rounded-full px-2 py-1 text-[9px] font-black uppercase" :class="entry.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300' : entry.status === 'missed' ? 'bg-rose-500/10 text-rose-300' : 'bg-zinc-800 text-zinc-400'">{{ entry.status === 'completed' ? 'Completed' : entry.status === 'missed' ? 'Missed' : 'Pending' }}</span></div>
+                                    <div class="flex items-start justify-between gap-3"><strong class="min-w-0 flex-1 text-sm">{{ entry.text }}</strong><span class="shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[9px] font-black uppercase" :class="entry.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300' : entry.status === 'missed' ? 'bg-rose-500/10 text-rose-300' : 'bg-zinc-800 text-zinc-400'">{{ entry.status === 'completed' ? 'Completed' : entry.status === 'missed' ? 'Missed' : 'Pending' }}</span></div>
                                     <p class="mt-2 text-xs text-zinc-500">{{ entry.creditHours }} hrs<span v-if="entry.type === 'weekly'"> · Weekly, due {{ displayAdminDate(entry.originalDueDate) }}</span></p>
                                     <p v-if="entry.isCompleted" class="mt-1 text-xs text-zinc-500">{{ formatTimestamp(entry.completedAt) }} · {{ entry.evidence.length }} photo{{ entry.evidence.length === 1 ? '' : 's' }}</p>
                                 </button>
