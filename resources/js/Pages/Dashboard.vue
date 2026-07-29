@@ -64,7 +64,21 @@ const adminIsToday = computed(() => adminDate.value === today.value);
 const locked = computed(() => props.isReadOnly || props.dayUnavailable || busy.value);
 const completedCount = computed(() => localTasks.value.filter((task) => task.completed).length);
 const progress = computed(() => localTasks.value.length ? Math.round((completedCount.value / localTasks.value.length) * 100) : 0);
-const statsMax = computed(() => Math.max(1, ...(props.statistics?.trend ?? []).map((row) => row.completed + row.missed + row.pending)));
+const trendChart = Object.freeze({
+    left: 100,
+    right: 520,
+    top: 12,
+    bottom: 82,
+});
+const trendMax = computed(() => Math.max(1, ...(props.statistics?.trend ?? []).flatMap((row) => [
+    Number(row.completed) || 0,
+    Number(row.missed) || 0,
+])));
+const trendAxisMax = computed(() => Math.max(4, Math.ceil(trendMax.value / 4) * 4));
+const trendTicks = computed(() => Array.from({ length: 5 }, (_, index) => ({
+    value: trendAxisMax.value - index * (trendAxisMax.value / 4),
+    y: trendChart.top + index * ((trendChart.bottom - trendChart.top) / 4),
+})));
 const adminTitle = computed(() => adminTabs.find((tab) => tab.key === adminTab.value)?.label ?? 'Dashboard');
 const themeToggleLabel = computed(() => theme.value === 'light'
     ? 'Light mode active. Switch to dark mode'
@@ -431,6 +445,45 @@ function customStats(event) {
     });
 }
 
+function trendLinePoints(metric) {
+    const trend = props.statistics?.trend ?? [];
+
+    return trend.map((row, index) => {
+        const x = trendPointX(index, trend.length);
+        const value = Math.max(0, Number(row[metric]) || 0);
+        const y = trendPointY(value);
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(' ');
+}
+
+function trendPointX(index, length) {
+    if (length <= 1) return (trendChart.left + trendChart.right) / 2;
+    return trendChart.left + (index / (length - 1)) * (trendChart.right - trendChart.left);
+}
+
+function trendPointY(value) {
+    const height = trendChart.bottom - trendChart.top;
+    return trendChart.bottom - (Math.max(0, Number(value) || 0) / trendAxisMax.value) * height;
+}
+
+function trendDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+}
+
+function trendWeekday(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return '';
+    const [year, month, day] = value.split('-').map(Number);
+    return new Intl.DateTimeFormat('en-MY', {
+        weekday: 'long', timeZone: 'Asia/Kuala_Lumpur',
+    }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+}
+
+function showTrendLabel(index, length) {
+    const interval = Math.ceil(Math.max(length, 1) / 7);
+    return index === 0 || index === length - 1 || index % interval === 0;
+}
+
 function chooseAdminDate(event) {
     const date = event.target.value;
     if (date) openAdmin(date);
@@ -604,11 +657,31 @@ function chooseAdminDate(event) {
                         </div>
                         <div class="rounded-2xl border border-zinc-700 bg-zinc-900 p-5">
                             <h2 class="font-black">Daily Trend</h2>
-                            <div class="mt-5 flex h-44 items-end gap-1 overflow-x-auto">
-                                <div v-for="row in statistics.trend" :key="row.date" class="group flex min-w-4 flex-1 flex-col items-center justify-end" :title="`${displayAdminDate(row.date)}: ${row.completed} completed, ${row.missed} missed, ${row.pending} pending`">
-                                    <div class="w-full rounded-t bg-emerald-500" :style="{ height: `${(row.completed / statsMax) * 130}px` }"></div>
-                                    <div class="w-full bg-rose-500" :style="{ height: `${(row.missed / statsMax) * 130}px` }"></div>
-                                    <span class="mt-2 hidden text-[8px] text-zinc-600 md:block">{{ row.date.slice(8) }}</span>
+                            <div class="mt-4 flex items-center gap-4 text-xs font-bold">
+                                <span class="inline-flex items-center gap-2 text-sky-300"><i class="h-2.5 w-2.5 rounded-full bg-sky-400"></i>Completed</span>
+                                <span class="inline-flex items-center gap-2 text-rose-300"><i class="h-2.5 w-2.5 bg-rose-400"></i>Missed</span>
+                            </div>
+                            <div class="mt-4 overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950/5 px-2 py-3">
+                                <div>
+                                    <svg class="block h-auto min-w-[36rem] w-full" viewBox="0 0 560 132" role="img" aria-labelledby="daily-trend-title daily-trend-description">
+                                        <title id="daily-trend-title">Daily trend</title>
+                                        <desc id="daily-trend-description">Lines show completed and missed tasks for each day in the selected period.</desc>
+                                        <g v-for="tick in trendTicks" :key="tick.value">
+                                            <line :x1="trendChart.left" :x2="trendChart.right" :y1="tick.y" :y2="tick.y" stroke="currentColor" stroke-width="0.5" stroke-opacity="0.7" class="text-zinc-700"></line>
+                                            <text x="84" :y="tick.y + 2.5" text-anchor="end" fill="currentColor" class="text-zinc-500" font-size="8">{{ tick.value }}</text>
+                                        </g>
+                                        <line :x1="trendChart.left" :x2="trendChart.right" :y1="trendChart.bottom" :y2="trendChart.bottom" stroke="currentColor" stroke-width="1" class="text-zinc-600"></line>
+                                        <polyline :points="trendLinePoints('completed')" fill="none" stroke="#60a5fa" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                                        <polyline :points="trendLinePoints('missed')" fill="none" stroke="#fb7185" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                                        <g v-for="(row, index) in statistics.trend" :key="row.date">
+                                            <circle :cx="trendPointX(index, statistics.trend.length)" :cy="trendPointY(row.completed)" r="1.9" fill="#60a5fa"><title>{{ `${displayAdminDate(row.date)}: ${row.completed} completed` }}</title></circle>
+                                            <rect :x="trendPointX(index, statistics.trend.length) - 1.8" :y="trendPointY(row.missed) - 1.8" width="3.6" height="3.6" fill="#fb7185"><title>{{ `${displayAdminDate(row.date)}: ${row.missed} missed` }}</title></rect>
+                                            <template v-if="showTrendLabel(index, statistics.trend.length)">
+                                                <text :x="trendPointX(index, statistics.trend.length)" y="106" text-anchor="middle" fill="currentColor" class="text-zinc-400" font-size="7.5">{{ trendDate(row.date) }}</text>
+                                                <text :x="trendPointX(index, statistics.trend.length)" y="119" text-anchor="middle" fill="currentColor" class="text-zinc-600" font-size="6.2">{{ trendWeekday(row.date) }}</text>
+                                            </template>
+                                        </g>
+                                    </svg>
                                 </div>
                             </div>
                         </div>
@@ -789,7 +862,8 @@ function chooseAdminDate(event) {
 .theme-light .cleaner-logout { color: #be123c; }
 .theme-light .cleaner-logout:hover { color: #9f1239; }
 .theme-light .admin-tab-active { background-color: #fff1f2; border-color: #fda4af; color: #be123c; }
-.theme-light .admin-tab:not(.admin-tab-active):hover { background-color: #fff; border-color: #cbd5e1; color: #18181b; }
+.theme-light .admin-tab:not(.admin-tab-active) { border-color: transparent; }
+.theme-light .admin-tab:not(.admin-tab-active):hover { background-color: #fff; border-color: transparent; color: #18181b; }
 @media (min-width: 640px) { .modal-backdrop { align-items: center; } }
 @media (min-width: 64rem) {
     .field,
