@@ -515,7 +515,7 @@ function chooseAdminDate(event) {
             <button class="mb-8 w-fit text-sm text-zinc-400" @click="screen = 'welcome'">← Back</button>
             <h1 class="text-center text-2xl font-black">Admin Access</h1>
             <form class="mt-7 space-y-3" @submit.prevent="loginAdmin">
-                <input v-model="adminLogin" required type="password" autocomplete="current-password" class="h-14 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 text-center tracking-widest outline-none focus:border-[#ED4264]" placeholder="Password">
+                <input v-model="adminLogin" required type="password" autocomplete="current-password" class="h-14 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 text-center tracking-widest outline-none focus:border-[#ED4264]" placeholder="********">
                 <button :disabled="busy" class="h-14 w-full rounded-2xl bg-gradient-to-r from-[#ED4264] to-[#FFEDBC] font-black text-zinc-950 disabled:opacity-50">Log in</button>
             </form>
         </main>
