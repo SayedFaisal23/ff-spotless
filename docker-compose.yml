@@ -19,6 +19,8 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     ports:
       - "8108:80"
+    volumes:
+      - app_evidence:/var/www/html/storage/app/private
     restart: unless-stopped
 
   mysql:
@@ -55,3 +57,4 @@ services:
 
 volumes:
   mysql_data:
+  app_evidence:

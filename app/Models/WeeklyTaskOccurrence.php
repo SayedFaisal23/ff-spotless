@@ -21,6 +21,7 @@ class WeeklyTaskOccurrence extends Model
         'missed_reason',
         'completed_at',
         'completed_on',
+        'completion_note',
     ];
 
     protected function casts(): array
@@ -52,6 +53,6 @@ class WeeklyTaskOccurrence extends Model
 
     public function evidence(): HasMany
     {
-        return $this->hasMany(WeeklyTaskEvidence::class);
+        return $this->hasMany(WeeklyTaskEvidence::class)->whereNull('invalidated_at');
     }
 }

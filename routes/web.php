@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminSessionController;
+use App\Http\Controllers\AdminTaskReopenController;
 use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\ChecklistOrderController;
 use App\Http\Controllers\DayAvailabilityController;
@@ -51,4 +52,6 @@ Route::middleware(EnsureMasterAdmin::class)->prefix('admin')->name('admin.')->gr
     Route::delete('/sessions/{taskSession}', [TaskSessionManagementController::class, 'destroy'])->name('sessions.destroy');
     Route::get('/evidence/daily/{evidence}', [EvidenceController::class, 'daily'])->name('evidence.daily');
     Route::get('/evidence/weekly/{evidence}', [EvidenceController::class, 'weekly'])->name('evidence.weekly');
+    Route::patch('/tasks/daily/{dailyChecklist}/reopen', [AdminTaskReopenController::class, 'daily'])->name('tasks.daily.reopen');
+    Route::patch('/tasks/weekly/{weeklyTaskOccurrence}/reopen', [AdminTaskReopenController::class, 'weekly'])->name('tasks.weekly.reopen');
 });

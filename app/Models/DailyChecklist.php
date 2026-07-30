@@ -27,6 +27,7 @@ class DailyChecklist extends Model
         'credit_hours',
         'is_completed',
         'completed_at',
+        'completion_note',
         'completed_by_user_id',
     ];
 
@@ -67,6 +68,6 @@ class DailyChecklist extends Model
 
     public function evidence(): HasMany
     {
-        return $this->hasMany(DailyTaskEvidence::class);
+        return $this->hasMany(DailyTaskEvidence::class)->whereNull('invalidated_at');
     }
 }

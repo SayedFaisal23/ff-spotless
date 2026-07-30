@@ -6,6 +6,7 @@ use App\Models\ChecklistDayStatus;
 use App\Models\ChecklistItemPosition;
 use App\Models\DailyChecklist;
 use App\Models\TaskSession;
+use App\Models\TaskReopenAudit;
 use App\Models\TaskTemplate;
 use App\Models\User;
 use App\Models\WeeklyTaskOccurrence;
@@ -66,6 +67,8 @@ class DashboardPresenter
             'startsOn' => $template->starts_on->toDateString(),
         ])->values()->all();
         $props['completedTasks'] = $this->historyItems($date, $checklist);
+        $props['overdueTasks'] = $this->overdueTasks();
+        $props['reopenAudits'] = $this->reopenAudits();
         $props['statistics'] = $statistics;
         $props['workload'] = $this->workload($templates, $weeklyTemplates);
 
@@ -146,7 +149,9 @@ class DashboardPresenter
                     'status' => $task->is_completed ? 'completed' : ($task->date->lessThan($this->dates->today()) ? 'missed' : 'pending'),
                     'isCompleted' => $task->is_completed,
                     'completedAt' => $this->localTimestamp($task->completed_at),
+                    'completionNote' => $task->completion_note,
                     'completedBy' => $task->completedBy?->only(['id', 'name', 'username']),
+                    'canReopen' => $task->is_completed && $task->date->isSameDay($this->dates->today()),
                     'evidence' => $task->evidence->map(static fn ($evidence): array => [
                         'id' => $evidence->id,
                         'url' => route('admin.evidence.daily', $evidence),
@@ -169,8 +174,11 @@ class DashboardPresenter
                     'missedReason' => $task->missed_reason,
                     'isCompleted' => $task->status === 'completed',
                     'completedAt' => $this->localTimestamp($task->completed_at),
+                    'completionNote' => $task->completion_note,
                     'originalDueDate' => $task->original_due_date->toDateString(),
                     'scheduledDate' => $task->scheduled_date->toDateString(),
+                    'canReopen' => $task->status === 'completed'
+                        && $task->week_start->isSameDay($this->dates->today()->startOfWeek()),
                     'postponements' => $task->postponements->map(static fn ($postponement): array => [
                         'from' => $postponement->from_date->toDateString(),
                         'to' => $postponement->to_date->toDateString(),
@@ -184,6 +192,75 @@ class DashboardPresenter
             });
 
         return $daily->concat($weekly)->values()->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function overdueTasks(): array
+    {
+        $today = $this->dates->today();
+        $daily = DailyChecklist::query()
+            ->whereDate('date', '<', $today->toDateString())
+            ->where('is_completed', false)
+            ->when(Schema::hasTable('checklist_day_statuses'), function ($query): void {
+                $query->whereNotIn('date', ChecklistDayStatus::query()
+                    ->where('is_unavailable', true)
+                    ->select('date'));
+            })
+            ->orderBy('date')
+            ->limit(50)
+            ->get()
+            ->map(static fn (DailyChecklist $task): array => [
+                'key' => 'daily:'.$task->id,
+                'type' => 'daily',
+                'id' => $task->id,
+                'taskText' => $task->task_name,
+                'sessionName' => $task->session_name,
+                'date' => $task->date->toDateString(),
+                'detail' => 'Daily task not completed',
+            ]);
+
+        $weekly = WeeklyTaskOccurrence::query()
+            ->where('status', 'missed')
+            ->orderBy('scheduled_date')
+            ->limit(50)
+            ->get()
+            ->map(static fn (WeeklyTaskOccurrence $task): array => [
+                'key' => 'weekly:'.$task->id,
+                'type' => 'weekly',
+                'id' => $task->id,
+                'taskText' => $task->task_name,
+                'sessionName' => $task->session_name,
+                'date' => $task->scheduled_date->toDateString(),
+                'detail' => $task->missed_reason === 'unavailable' ? 'Weekly task unavailable' : 'Weekly task missed',
+            ]);
+
+        return $daily->concat($weekly)->sortBy('date')->take(50)->values()->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function reopenAudits(): array
+    {
+        return TaskReopenAudit::query()
+            ->orderByDesc('occurred_at')
+            ->limit(50)
+            ->get()
+            ->map(fn (TaskReopenAudit $audit): array => [
+                'id' => $audit->id,
+                'taskType' => $audit->task_type,
+                'taskText' => $audit->task_name,
+                'sessionName' => $audit->session_name,
+                'taskDate' => $audit->task_date->toDateString(),
+                'previousCompletedAt' => $this->localTimestamp($audit->previous_completed_at),
+                'completionNote' => $audit->completion_note,
+                'evidenceCount' => $audit->invalidated_evidence_count,
+                'reason' => $audit->reason,
+                'performedBy' => $audit->performed_by,
+                'occurredAt' => $this->localTimestamp($audit->occurred_at),
+            ])->values()->all();
     }
 
     private function base(Request $request, string $mode, CarbonImmutable $date, array $tasks): array
@@ -223,6 +300,8 @@ class DashboardPresenter
             'templates' => [],
             'weeklyTemplates' => [],
             'completedTasks' => [],
+            'overdueTasks' => [],
+            'reopenAudits' => [],
             'statistics' => null,
             'workload' => [],
         ];
