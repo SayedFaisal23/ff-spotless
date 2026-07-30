@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ChecklistDayStatus;
 use App\Models\DailyChecklist;
 use App\Models\TaskSession;
+use App\Models\TaskReopenAudit;
 use App\Models\TaskTemplate;
 use App\Models\WeeklyTaskOccurrence;
 use App\Models\WeeklyTaskPostponement;
@@ -20,6 +21,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class ChecklistWorkflowTest extends TestCase
@@ -232,6 +234,85 @@ class ChecklistWorkflowTest extends TestCase
         $this->get(route('admin.evidence.daily', $evidence))
             ->assertOk()
             ->assertHeader('X-Content-Type-Options', 'nosniff');
+    }
+
+    public function test_cleaner_note_is_saved_with_completed_evidence(): void
+    {
+        Storage::fake('local');
+        $this->fakeWatermarker();
+        $task = $this->dailyTask();
+
+        $this->post(route('tasks.daily.complete', $task), [
+            'date' => $task->date->toDateString(),
+            'note' => 'Area closed while cleaning.',
+            'photos' => [$this->proof()],
+        ])->assertRedirect(route('checklist.index', ['date' => $task->date->toDateString()]));
+
+        $this->assertSame('Area closed while cleaning.', $task->refresh()->completion_note);
+    }
+
+    public function test_admin_can_reopen_a_current_daily_task_with_an_audit_record(): void
+    {
+        Storage::fake('local');
+        $this->fakeWatermarker();
+        $task = $this->dailyTask();
+        $date = $task->date->toDateString();
+        $this->post(route('tasks.daily.complete', $task), [
+            'date' => $date,
+            'note' => 'Supplies were unavailable.',
+            'photos' => [$this->proof()],
+        ]);
+        $evidence = $task->evidence()->sole();
+
+        $this->patch(route('admin.tasks.daily.reopen', $task), ['reason' => 'The wrong area was photographed.'])
+            ->assertRedirect(route('home'));
+
+        $this->loginAdmin();
+        $this->patch(route('admin.tasks.daily.reopen', $task), ['reason' => 'The wrong area was photographed.'])
+            ->assertRedirect(route('admin.index'));
+
+        $task->refresh();
+        $this->assertFalse($task->is_completed);
+        $this->assertNull($task->completion_note);
+        $this->assertSame(0, $task->evidence()->count());
+        $this->assertNotNull($evidence->refresh()->invalidated_at);
+        $this->assertSame('The wrong area was photographed.', $evidence->invalidation_reason);
+
+        $audit = TaskReopenAudit::query()->sole();
+        $this->assertSame('daily', $audit->task_type);
+        $this->assertSame('Supplies were unavailable.', $audit->completion_note);
+        $this->assertSame(1, $audit->invalidated_evidence_count);
+
+        $this->post(route('tasks.daily.complete', $task), [
+            'date' => $date,
+            'note' => 'Area was cleaned after the correction.',
+            'photos' => [$this->proof()],
+        ])->assertRedirect(route('checklist.index', ['date' => $date]));
+        $this->assertTrue($task->refresh()->is_completed);
+        $this->assertSame('Area was cleaned after the correction.', $task->completion_note);
+    }
+
+    public function test_admin_dashboard_lists_overdue_daily_and_weekly_tasks(): void
+    {
+        $today = app(OperationalDate::class)->today();
+        $this->dailyTask('Overdue daily', $today->subDay()->toDateString());
+        $template = $this->weeklyTemplate('Overdue weekly', dueWeekday: 1);
+        app(WeeklyTaskScheduler::class)->materializeWeek($today);
+        WeeklyTaskOccurrence::query()
+            ->where('weekly_task_template_id', $template->id)
+            ->sole()
+            ->forceFill([
+                'status' => 'missed',
+                'missed_reason' => 'incomplete',
+                'scheduled_date' => $today->subDay(),
+            ])->save();
+
+        $this->loginAdmin();
+        $this->get(route('admin.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('overdueTasks', 2)
+                ->where('overdueTasks.0.taskText', 'Overdue daily')
+                ->where('overdueTasks.1.taskText', 'Overdue weekly'));
     }
 
     public function test_completed_day_cannot_be_marked_unavailable(): void

@@ -26,13 +26,14 @@ class TaskCompletionService
     /**
      * @param  list<UploadedFile>  $photos
      */
-    public function completeDaily(DailyChecklist $task, string $date, array $photos): void
+    public function completeDaily(DailyChecklist $task, string $date, array $photos, ?string $note = null): void
     {
         $this->assertWritableDate($date);
+        $note = $this->normaliseNote($note);
         $storedPaths = [];
 
         try {
-            DB::transaction(function () use ($task, $date, $photos, &$storedPaths): void {
+            DB::transaction(function () use ($task, $date, $photos, $note, &$storedPaths): void {
                 $this->materializer->acquireTemplateSynchronizationLock();
                 $this->assertAvailableDate($date);
                 $locked = DailyChecklist::query()->lockForUpdate()->findOrFail($task->id);
@@ -60,6 +61,7 @@ class TaskCompletionService
                 $locked->forceFill([
                     'is_completed' => true,
                     'completed_at' => $completedAt,
+                    'completion_note' => $note,
                     'completed_by_user_id' => null,
                 ])->save();
             }, 3);
@@ -72,15 +74,16 @@ class TaskCompletionService
     /**
      * @param  list<UploadedFile>  $photos
      */
-    public function completeWeekly(WeeklyTaskOccurrence $occurrence, string $date, array $photos): void
+    public function completeWeekly(WeeklyTaskOccurrence $occurrence, string $date, array $photos, ?string $note = null): void
     {
         $this->assertWritableDate($date);
+        $note = $this->normaliseNote($note);
         $today = $this->dates->fromDateString($date);
         $this->weekly->advanceThrough($today);
         $storedPaths = [];
 
         try {
-            DB::transaction(function () use ($occurrence, $date, $photos, &$storedPaths): void {
+            DB::transaction(function () use ($occurrence, $date, $photos, $note, &$storedPaths): void {
                 $this->materializer->acquireTemplateSynchronizationLock();
                 $this->assertAvailableDate($date);
                 $locked = WeeklyTaskOccurrence::query()->lockForUpdate()->findOrFail($occurrence->id);
@@ -109,6 +112,7 @@ class TaskCompletionService
                     'status' => 'completed',
                     'completed_at' => $completedAt,
                     'completed_on' => $date,
+                    'completion_note' => $note,
                 ])->save();
             }, 3);
         } catch (Throwable $exception) {
@@ -130,6 +134,13 @@ class TaskCompletionService
         if (ChecklistDayStatus::query()->whereDate('date', $date)->where('is_unavailable', true)->exists()) {
             throw ValidationException::withMessages(['date' => 'Hari ini ditandakan MC/tidak tersedia.']);
         }
+    }
+
+    private function normaliseNote(?string $note): ?string
+    {
+        $note = trim((string) $note);
+
+        return $note === '' ? null : $note;
     }
 
     /**

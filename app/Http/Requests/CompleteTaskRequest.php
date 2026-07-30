@@ -15,6 +15,7 @@ class CompleteTaskRequest extends FormRequest
     {
         return [
             'date' => ['bail', 'required', 'date_format:Y-m-d'],
+            'note' => ['nullable', 'string', 'max:500'],
             'photos' => ['bail', 'required', 'array', 'min:1'],
             'photos.*' => [
                 'bail',
@@ -32,6 +33,7 @@ class CompleteTaskRequest extends FormRequest
         return [
             'date.required' => 'Tarikh diperlukan.',
             'date.date_format' => 'Tarikh mesti menggunakan format YYYY-MM-DD.',
+            'note.max' => 'Nota tugasan tidak boleh melebihi 500 aksara.',
             'photos.required' => 'Sekurang-kurangnya satu foto bukti diperlukan.',
             'photos.array' => 'Foto bukti tidak sah.',
             'photos.min' => 'Sekurang-kurangnya satu foto bukti diperlukan.',

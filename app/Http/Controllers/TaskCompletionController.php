@@ -12,7 +12,7 @@ class TaskCompletionController extends Controller
     public function daily(CompleteTaskRequest $request, DailyChecklist $dailyChecklist, TaskCompletionService $service)
     {
         $data = $request->validated();
-        $service->completeDaily($dailyChecklist, $data['date'], $request->file('photos', []));
+        $service->completeDaily($dailyChecklist, $data['date'], $request->file('photos', []), $data['note'] ?? null);
 
         return to_route('checklist.index', ['date' => $data['date']]);
     }
@@ -20,7 +20,7 @@ class TaskCompletionController extends Controller
     public function weekly(CompleteTaskRequest $request, WeeklyTaskOccurrence $weeklyTaskOccurrence, TaskCompletionService $service)
     {
         $data = $request->validated();
-        $service->completeWeekly($weeklyTaskOccurrence, $data['date'], $request->file('photos', []));
+        $service->completeWeekly($weeklyTaskOccurrence, $data['date'], $request->file('photos', []), $data['note'] ?? null);
 
         return to_route('checklist.index', ['date' => $data['date']]);
     }

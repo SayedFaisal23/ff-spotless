@@ -15,6 +15,8 @@ const props = defineProps({
     templates: { type: [Array, Object], default: () => [] },
     weeklyTemplates: { type: [Array, Object], default: () => [] },
     completedTasks: { type: [Array, Object], default: () => [] },
+    overdueTasks: { type: [Array, Object], default: () => [] },
+    reopenAudits: { type: [Array, Object], default: () => [] },
     statistics: { type: Object, default: null },
     workload: { type: Array, default: () => [] },
 });
@@ -33,7 +35,10 @@ const adminLogin = ref('');
 const evidenceTask = ref(null);
 const evidenceFiles = ref([]);
 const evidencePreviews = ref([]);
+const completionNote = ref('');
 const viewingEvidence = ref(null);
+const reopeningTask = ref(null);
+const reopenReason = ref('');
 const editing = ref(null);
 const sessionEditing = ref(null);
 const sortables = [];
@@ -47,6 +52,7 @@ const editForm = ref({});
 const adminTabs = [
     { key: 'statistics', label: 'Dashboard' },
     { key: 'history', label: 'View History' },
+    { key: 'audit', label: 'Audit Log' },
     { key: 'sessions', label: 'Session Editor' },
     { key: 'weekly', label: 'Weekly Task Editor' },
     { key: 'daily', label: 'Daily Task Editor' },
@@ -56,6 +62,8 @@ const activeSessions = computed(() => props.sessions.filter((session) => session
 const templates = computed(() => collectionItems(props.templates));
 const weeklyTemplates = computed(() => collectionItems(props.weeklyTemplates));
 const history = computed(() => collectionItems(props.completedTasks));
+const overdueTasks = computed(() => collectionItems(props.overdueTasks));
+const reopenAudits = computed(() => collectionItems(props.reopenAudits));
 const today = computed(() => new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date()));
@@ -171,6 +179,11 @@ function displayAdminDate(value) {
     return formatDate(value, 'en-MY');
 }
 
+function displayDateInput(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return '';
+    return `${value.slice(8, 10)}/${value.slice(5, 7)}/${value.slice(0, 4)}`;
+}
+
 function formatDate(value, locale) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return value;
     const [year, month, day] = value.split('-').map(Number);
@@ -270,6 +283,7 @@ function openEvidence(task) {
     evidenceTask.value = task;
     evidenceFiles.value = [];
     evidencePreviews.value = [];
+    completionNote.value = '';
 }
 
 function selectEvidence(event) {
@@ -299,6 +313,7 @@ function clearEvidenceFiles() {
 function closeEvidence(force = false) {
     if (busy.value && force !== true) return;
     clearEvidenceFiles();
+    completionNote.value = '';
     evidenceTask.value = null;
 }
 
@@ -309,12 +324,45 @@ function completeTask() {
     }
     const form = new FormData();
     form.append('date', selectedDate.value);
+    form.append('note', completionNote.value);
     evidenceFiles.value.forEach((file) => form.append('photos[]', file));
     const task = evidenceTask.value;
     router.post(`/tasks/${task.type}/${task.id}/complete`, form, {
         ...inertiaOptions('Tugasan selesai dengan bukti foto.', 'Tugasan tidak dapat diselesaikan.', () => closeEvidence(true)),
         forceFormData: true,
     });
+}
+
+function viewOverdue(task) {
+    adminTab.value = 'history';
+    openAdmin(task.date);
+}
+
+function openReopen(task) {
+    reopeningTask.value = task;
+    reopenReason.value = '';
+}
+
+function closeReopen(force = false) {
+    if (busy.value && force !== true) return;
+    reopeningTask.value = null;
+    reopenReason.value = '';
+}
+
+function reopenTask() {
+    if (!reopeningTask.value) return;
+    const reason = reopenReason.value.trim();
+    if (!reason) {
+        fail({}, 'A reopen reason is required.');
+        return;
+    }
+
+    const task = reopeningTask.value;
+    router.patch(`/admin/tasks/${task.type}/${task.id}/reopen`, { reason }, inertiaOptions(
+        'Task reopened. The prior evidence is preserved in the audit log.',
+        'Task could not be reopened.',
+        () => closeReopen(true),
+    ));
 }
 
 function destroySortables() {
@@ -659,12 +707,26 @@ function chooseAdminDate(event) {
                         <div class="flex flex-wrap gap-2">
                             <button v-for="days in [7,30,90]" :key="days" class="small-button" @click="statsPreset(days)">{{ days }} days</button>
                             <form class="flex flex-wrap gap-2" @submit.prevent="customStats">
-                                <input name="stats_from" type="date" required :value="statistics.from" class="field !w-auto">
-                                <input name="stats_to" type="date" required :value="statistics.to" class="field !w-auto">
+                                <label class="field relative !w-auto flex min-w-40 items-center justify-between gap-3 focus-within:border-[#ED4264]">
+                                    <span>{{ displayDateInput(statistics.from) }}</span>
+                                    <svg aria-hidden="true" class="h-4 w-4 shrink-0 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg>
+                                    <input name="stats_from" type="date" required class="absolute inset-0 h-full w-full cursor-pointer opacity-0" :value="statistics.from" aria-label="Statistics start date">
+                                </label>
+                                <label class="field relative !w-auto flex min-w-40 items-center justify-between gap-3 focus-within:border-[#ED4264]">
+                                    <span>{{ displayDateInput(statistics.to) }}</span>
+                                    <svg aria-hidden="true" class="h-4 w-4 shrink-0 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg>
+                                    <input name="stats_to" type="date" required class="absolute inset-0 h-full w-full cursor-pointer opacity-0" :value="statistics.to" aria-label="Statistics end date">
+                                </label>
                                 <button class="small-button">Filter</button>
                             </form>
                         </div>
                         <p class="text-xs text-zinc-500">Accurate statistics are tracked from {{ displayAdminDate(statistics.trackingStart) }}.</p>
+                        <section v-if="overdueTasks.length" class="rounded-2xl border border-rose-500/50 bg-rose-500/10 p-5" aria-labelledby="overdue-tasks-heading">
+                            <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 id="overdue-tasks-heading" class="font-black text-rose-200">Needs attention: {{ overdueTasks.length }} overdue task{{ overdueTasks.length === 1 ? '' : 's' }}</h2><p class="mt-1 text-sm text-rose-100/80">These tasks are uncompleted or missed. Select one to view its history.</p></div><span class="rounded-full border border-rose-400/40 px-3 py-1 text-xs font-black uppercase text-rose-200">Overdue</span></div>
+                            <div class="mt-4 grid gap-2 md:grid-cols-2">
+                                <button v-for="task in overdueTasks" :key="task.key" class="rounded-xl border border-rose-400/30 bg-zinc-950/20 p-3 text-left transition hover:border-rose-300 hover:bg-rose-500/10" @click="viewOverdue(task)"><strong class="block text-sm text-zinc-100">{{ task.taskText }}</strong><span class="mt-1 block text-xs text-zinc-300">{{ task.sessionName }} · {{ displayAdminDate(task.date) }} · {{ task.detail }}</span></button>
+                            </div>
+                        </section>
                         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                             <div v-for="card in [
                                 ['Completed', statistics.overview.completed], ['Missed', statistics.overview.missed], ['Completion rate', statistics.overview.completionRate + '%'], ['MC days', statistics.overview.mcDays],
@@ -723,22 +785,36 @@ function chooseAdminDate(event) {
                     <div v-else-if="adminTab === 'history'" class="space-y-6">
                         <div class="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-900/50 p-3">
                             <button class="h-10 w-10 rounded-xl border border-zinc-700" aria-label="Previous day" @click="openAdmin(dateOffset(adminDate, -1))">‹</button>
-                            <input type="date" class="field !w-auto min-w-40" :value="adminDate" aria-label="Choose history date" @change="chooseAdminDate">
+                            <label class="field relative !w-auto flex min-w-40 items-center justify-between gap-3 focus-within:border-[#ED4264]">
+                                <span>{{ displayDateInput(adminDate) }}</span>
+                                <svg aria-hidden="true" class="h-4 w-4 shrink-0 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg>
+                                <input type="date" class="absolute inset-0 h-full w-full cursor-pointer opacity-0" :value="adminDate" aria-label="Choose history date" @change="chooseAdminDate">
+                            </label>
                             <button class="h-10 w-10 rounded-xl border border-zinc-700" aria-label="Next day" @click="openAdmin(dateOffset(adminDate, 1))">›</button>
                             <button v-if="!adminIsToday" class="small-button" @click="openAdmin()">Back to today</button>
                             <span class="text-sm font-black text-zinc-300">{{ displayAdminDate(adminDate) }}</span>
                         </div>
                         <section v-for="(session, index) in sessions" :key="session.id" v-show="historyFor(session.id).length">
                             <header class="mb-3 flex items-center justify-between gap-3"><h2 class="font-black uppercase" :class="sessionTone(index)">{{ session.name }}</h2><span class="shrink-0 text-xs text-zinc-500">{{ sessionCreditsByType(historyFor(session.id), 'daily') }} ch/day <span aria-hidden="true">•</span> {{ sessionCreditsByType(historyFor(session.id), 'weekly') }} ch/week</span></header>
-                            <div class="grid gap-2 md:grid-cols-2">
-                                <button v-for="entry in historyFor(session.id)" :key="entry.key" class="rounded-xl border border-zinc-700 bg-zinc-900 p-4 text-left disabled:cursor-default" :disabled="!entry.evidence?.length" @click="viewingEvidence = entry">
+                            <div class="grid items-start gap-2 md:grid-cols-2">
+                                <article v-for="entry in historyFor(session.id)" :key="entry.key" class="rounded-xl border bg-zinc-900 p-4 transition duration-150" :class="entry.evidence?.length ? 'border-zinc-700 hover:-translate-y-0.5 hover:border-sky-400/70 hover:bg-sky-400/5 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-sky-400' : 'border-zinc-700 opacity-75'">
+                                    <button class="w-full text-left disabled:cursor-default" :class="entry.evidence?.length ? 'cursor-pointer' : ''" :disabled="!entry.evidence?.length" @click="viewingEvidence = entry">
                                     <div class="flex items-start justify-between gap-3"><strong class="min-w-0 flex-1 text-sm">{{ entry.text }}</strong><span class="shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[9px] font-black uppercase" :class="entry.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300' : entry.status === 'missed' ? 'bg-rose-500/10 text-rose-300' : 'bg-zinc-800 text-zinc-400'">{{ entry.status === 'completed' ? 'Completed' : entry.status === 'missed' ? 'Missed' : 'Pending' }}</span></div>
                                     <p class="mt-2 text-xs text-zinc-500">{{ entry.creditHours }} hrs<span v-if="entry.type === 'weekly'"> · Weekly, due {{ displayAdminDate(entry.originalDueDate) }}</span></p>
                                     <p v-if="entry.isCompleted" class="mt-1 text-xs text-zinc-500">{{ formatTimestamp(entry.completedAt) }} · {{ entry.evidence.length }} photo{{ entry.evidence.length === 1 ? '' : 's' }}</p>
-                                </button>
+                                    <p v-if="entry.completionNote" class="mt-2 text-xs text-zinc-300">Note: {{ entry.completionNote }}</p>
+                                    <p v-if="entry.evidence?.length" class="mt-3 inline-flex items-center gap-1 text-xs font-bold text-sky-300">View proof photo{{ entry.evidence.length === 1 ? '' : 's' }} <span aria-hidden="true">→</span></p>
+                                    </button>
+                                </article>
                             </div>
                         </section>
                         <p v-if="!history.length" class="rounded-2xl border border-dashed border-zinc-700 p-10 text-center text-sm text-zinc-500">No records for this date.</p>
+                    </div>
+
+                    <div v-else-if="adminTab === 'audit'" class="space-y-4">
+                        <div class="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5"><h2 class="font-black">Task reopen audit log</h2><p class="mt-1 text-sm text-zinc-400">Reopened tasks keep their previous proof privately, together with the required admin reason.</p></div>
+                        <p v-if="!reopenAudits.length" class="rounded-2xl border border-dashed border-zinc-700 p-10 text-center text-sm text-zinc-500">No tasks have been reopened.</p>
+                        <article v-for="audit in reopenAudits" :key="audit.id" class="rounded-2xl border border-zinc-700 bg-zinc-900 p-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><h3 class="font-black">{{ audit.taskText }}</h3><p class="mt-1 text-xs text-zinc-500">{{ audit.taskType }} · {{ audit.sessionName }} · task date {{ displayAdminDate(audit.taskDate) }}</p></div><span class="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-black uppercase text-amber-300">Reopened</span></div><p class="mt-3 text-sm text-zinc-200">Reason: {{ audit.reason }}</p><p v-if="audit.completionNote" class="mt-2 text-sm text-zinc-400">Original note: {{ audit.completionNote }}</p><p class="mt-3 text-xs text-zinc-500">{{ audit.evidenceCount }} proof photo{{ audit.evidenceCount === 1 ? '' : 's' }} invalidated · {{ audit.performedBy }} · {{ formatTimestamp(audit.occurredAt) }}</p></article>
                     </div>
 
                     <div v-else-if="adminTab === 'sessions'" class="grid gap-6 lg:grid-cols-[360px_1fr]">
@@ -799,6 +875,7 @@ function chooseAdminDate(event) {
                     </div>
                 </div>
                 <div v-if="evidencePreviews.length" class="mt-4 grid grid-cols-3 gap-2"><div v-for="(preview, index) in evidencePreviews" :key="preview" class="relative aspect-square overflow-hidden rounded-xl bg-zinc-800"><img :src="preview" alt="Pratonton bukti" class="h-full w-full object-cover"><button type="button" class="absolute right-1 top-1 h-7 w-7 rounded-full bg-black/75 text-xs" @click="removeEvidence(index)">✕</button></div></div>
+                <label class="mt-4 block text-sm font-bold">Nota tugasan <span class="font-normal text-zinc-500">(pilihan)</span><textarea v-model.trim="completionNote" maxlength="500" rows="5" class="field mt-2 h-auto pb-3 pt-8" placeholder="Contoh: kawasan ditutup atau bekalan tidak mencukupi"></textarea></label>
                 <button :disabled="busy || !evidenceFiles.length" class="primary-button mt-5">Hantar bukti & tandakan selesai</button>
                 <p class="mt-3 text-center text-xs text-amber-300">Tugasan yang selesai tidak boleh dibuka semula oleh cleaner.</p>
             </form>
@@ -808,8 +885,19 @@ function chooseAdminDate(event) {
             <div class="modal-card max-w-3xl">
                 <div class="flex justify-between gap-3"><div><h2 class="font-black">{{ viewingEvidence.text }}</h2><p class="mt-1 text-xs text-zinc-500">{{ formatTimestamp(viewingEvidence.completedAt) }} · {{ viewingEvidence.creditHours }} hrs</p></div><button class="small-button" @click="viewingEvidence = null">✕</button></div>
                 <p v-if="viewingEvidence.type === 'weekly'" class="mt-3 text-xs text-sky-300">Weekly · due {{ displayAdminDate(viewingEvidence.originalDueDate) }} · final scheduled date {{ displayAdminDate(viewingEvidence.scheduledDate) }}</p>
+                <p v-if="viewingEvidence.completionNote" class="mt-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3 text-sm text-zinc-300">Note: {{ viewingEvidence.completionNote }}</p>
                 <div class="mt-5 grid gap-3 sm:grid-cols-2"><a v-for="photo in viewingEvidence.evidence" :key="photo.id" :href="photo.url" target="_blank" rel="noopener" class="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900"><img :src="photo.url" loading="lazy" alt="Task evidence photo" class="max-h-96 w-full object-contain"></a></div>
+                <button v-if="viewingEvidence.canReopen" class="small-button mt-5 border-amber-400/50 text-amber-300 transition hover:border-amber-300 hover:bg-amber-400/10 hover:text-amber-200" @click="openReopen(viewingEvidence); viewingEvidence = null">Reopen completed task</button>
             </div>
+        </div>
+
+        <div v-if="reopeningTask" class="modal-backdrop">
+            <form class="modal-card" @submit.prevent="reopenTask">
+                <div class="flex justify-between gap-3"><div><h2 class="font-black">Reopen completed task</h2><p class="mt-1 text-sm text-zinc-400">{{ reopeningTask.text }}</p></div><button type="button" class="small-button" @click="closeReopen">✕</button></div>
+                <p class="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-100">The previous proof will no longer appear in task history. It is retained securely in the audit log.</p>
+                <label class="mt-5 block text-sm font-bold">Reason for reopening<textarea v-model.trim="reopenReason" required maxlength="1000" rows="4" class="field mt-2 h-auto py-3" placeholder="Explain why the proof was uploaded by mistake"></textarea></label>
+                <button :disabled="busy || !reopenReason.trim()" class="primary-button mt-5">Reopen task</button>
+            </form>
         </div>
 
         <div v-if="editing || sessionEditing" class="modal-backdrop">
