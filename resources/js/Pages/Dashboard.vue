@@ -62,7 +62,6 @@ const activeSessions = computed(() => props.sessions.filter((session) => session
 const templates = computed(() => collectionItems(props.templates));
 const weeklyTemplates = computed(() => collectionItems(props.weeklyTemplates));
 const history = computed(() => collectionItems(props.completedTasks));
-const overdueTasks = computed(() => collectionItems(props.overdueTasks));
 const reopenAudits = computed(() => collectionItems(props.reopenAudits));
 const today = computed(() => new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -333,10 +332,6 @@ function completeTask() {
     });
 }
 
-function viewOverdue(task) {
-    adminTab.value = 'history';
-    openAdmin(task.date);
-}
 
 function openReopen(task) {
     reopeningTask.value = task;
@@ -721,12 +716,6 @@ function chooseAdminDate(event) {
                             </form>
                         </div>
                         <p class="text-xs text-zinc-500">Accurate statistics are tracked from {{ displayAdminDate(statistics.trackingStart) }}.</p>
-                        <section v-if="overdueTasks.length" class="rounded-2xl border border-rose-500/50 bg-rose-500/10 p-5" aria-labelledby="overdue-tasks-heading">
-                            <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 id="overdue-tasks-heading" class="font-black text-rose-200">Needs attention: {{ overdueTasks.length }} overdue task{{ overdueTasks.length === 1 ? '' : 's' }}</h2><p class="mt-1 text-sm text-rose-100/80">These tasks are uncompleted or missed. Select one to view its history.</p></div><span class="rounded-full border border-rose-400/40 px-3 py-1 text-xs font-black uppercase text-rose-200">Overdue</span></div>
-                            <div class="mt-4 grid gap-2 md:grid-cols-2">
-                                <button v-for="task in overdueTasks" :key="task.key" class="rounded-xl border border-rose-400/30 bg-zinc-950/20 p-3 text-left transition hover:border-rose-300 hover:bg-rose-500/10" @click="viewOverdue(task)"><strong class="block text-sm text-zinc-100">{{ task.taskText }}</strong><span class="mt-1 block text-xs text-zinc-300">{{ task.sessionName }} · {{ displayAdminDate(task.date) }} · {{ task.detail }}</span></button>
-                            </div>
-                        </section>
                         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                             <div v-for="card in [
                                 ['Completed', statistics.overview.completed], ['Missed', statistics.overview.missed], ['Completion rate', statistics.overview.completionRate + '%'], ['MC days', statistics.overview.mcDays],
