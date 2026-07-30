@@ -562,9 +562,9 @@ function chooseAdminDate(event) {
                             <button v-if="isToday && !dayUnavailable" class="drag-handle cursor-grab px-1 text-lg text-zinc-500" aria-label="Seret untuk menyusun">⋮⋮</button>
                             <button class="min-w-0 flex-1 text-left" :class="dayUnavailable && !task.completed ? 'cursor-not-allowed' : ''" :disabled="locked || task.completed" @click="openEvidence(task)">
                                 <span class="flex items-center gap-2">
-                                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2" :class="task.completed ? 'border-[#ED4264] bg-[#ED4264] text-white' : 'border-zinc-600'">{{ task.completed ? '✓' : '' }}</span>
+                                    <span v-if="!dayUnavailable" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2" :class="task.completed ? 'border-[#ED4264] bg-[#ED4264] text-white' : 'border-zinc-600'">{{ task.completed ? '✓' : '' }}</span>
                                     <span class="min-w-0">
-                                        <span class="block text-sm font-semibold" :class="task.completed ? 'text-zinc-500 line-through' : 'text-zinc-100'">{{ task.text }}</span>
+                                        <span class="block text-sm font-semibold" :class="task.completed ? 'text-zinc-500 line-through' : dayUnavailable ? 'text-zinc-600' : 'text-zinc-100'">{{ task.text }}</span>
                                         <span class="mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase text-zinc-500">
                                             <span>{{ task.creditHours }} jam</span>
                                             <template v-if="task.isWeekly">
