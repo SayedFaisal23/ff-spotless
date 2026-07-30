@@ -52,10 +52,10 @@ const editForm = ref({});
 const adminTabs = [
     { key: 'statistics', label: 'Dashboard' },
     { key: 'history', label: 'View History' },
-    { key: 'audit', label: 'Audit Log' },
     { key: 'sessions', label: 'Session Editor' },
     { key: 'weekly', label: 'Weekly Task Editor' },
     { key: 'daily', label: 'Daily Task Editor' },
+    { key: 'audit', label: 'Audit Log' },
 ];
 
 const activeSessions = computed(() => props.sessions.filter((session) => session.isActive));
