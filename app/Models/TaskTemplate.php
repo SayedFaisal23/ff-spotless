@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TaskTemplate extends Model
@@ -17,6 +18,8 @@ class TaskTemplate extends Model
     protected $fillable = [
         'task_name',
         'task_session_id',
+        'task_collection_id',
+        'applies_to_all_collections',
         'credit_hours',
         'sort_order',
         'is_active',
@@ -29,6 +32,8 @@ class TaskTemplate extends Model
     {
         return [
             'task_session_id' => 'integer',
+            'task_collection_id' => 'integer',
+            'applies_to_all_collections' => 'boolean',
             'credit_hours' => 'decimal:2',
             'sort_order' => 'integer',
             'is_active' => 'boolean',
@@ -55,5 +60,15 @@ class TaskTemplate extends Model
     public function taskSession(): BelongsTo
     {
         return $this->belongsTo(TaskSession::class);
+    }
+
+    public function taskCollection(): BelongsTo
+    {
+        return $this->belongsTo(TaskCollection::class);
+    }
+
+    public function taskCollections(): BelongsToMany
+    {
+        return $this->belongsToMany(TaskCollection::class, 'task_template_task_collection');
     }
 }

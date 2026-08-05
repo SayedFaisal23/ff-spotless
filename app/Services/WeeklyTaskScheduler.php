@@ -15,6 +15,7 @@ class WeeklyTaskScheduler
     public function __construct(
         private readonly ChecklistMaterializer $materializer,
         private readonly OperationalDate $dates,
+        private readonly TaskCollectionResolver $collections,
     ) {}
 
     public function materializeWeek(CarbonImmutable $date, bool $refresh = false): void
@@ -36,30 +37,51 @@ class WeeklyTaskScheduler
                 'week_start' => $weekStart->toDateString(),
             ]);
 
-            WeeklyTaskTemplate::query()
+            $templates = WeeklyTaskTemplate::query()
                 ->active()
                 ->whereDate('starts_on', '<=', $weekEnd->toDateString())
-                ->with('taskSession:id,name')
+                ->with(['taskSession:id,name', 'taskCollections:id,name'])
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get()
-                ->each(function (WeeklyTaskTemplate $template) use ($weekStart): void {
-                    $dueDate = $weekStart->addDays($template->due_weekday - 1);
+                ->filter(function (WeeklyTaskTemplate $template) use ($weekStart): bool {
+                    if ($template->applies_to_all_collections) {
+                        return true;
+                    }
 
-                    WeeklyTaskOccurrence::query()->insertOrIgnore([[
-                            'week_start' => $weekStart->toDateString(),
-                            'weekly_task_template_id' => $template->id,
-                            'task_session_id' => $template->task_session_id,
-                            'task_name' => $template->task_name,
-                            'session_name' => $template->taskSession->name,
-                            'credit_hours' => $template->credit_hours,
-                            'original_due_date' => $dueDate->toDateString(),
-                            'scheduled_date' => $dueDate->toDateString(),
-                            'status' => 'pending',
-                            'created_at' => $this->dates->nowUtc(),
-                            'updated_at' => $this->dates->nowUtc(),
-                    ]]);
-                });
+                    $dueDate = $weekStart->addDays($template->due_weekday - 1);
+                    $activeCollection = $this->collections->forDate($dueDate);
+
+                    return $template->taskCollections->contains('id', $activeCollection->getKey());
+                })
+                ->values();
+
+            if ($refresh) {
+                $staleQuery = WeeklyTaskOccurrence::query()
+                    ->whereDate('week_start', $weekStart->toDateString())
+                    ->where('status', 'pending');
+
+                $staleIds = $templates->isEmpty()
+                    ? $staleQuery->pluck('id')
+                    : $staleQuery->whereNotIn('weekly_task_template_id', $templates->pluck('id'))->pluck('id');
+
+                if ($staleIds->isNotEmpty()) {
+                    DB::table('checklist_item_positions')
+                        ->where('item_type', 'weekly')
+                        ->whereIn('item_id', $staleIds)
+                        ->delete();
+
+                    WeeklyTaskPostponement::query()
+                        ->whereIn('weekly_task_occurrence_id', $staleIds)
+                        ->delete();
+
+                    WeeklyTaskOccurrence::query()->whereKey($staleIds)->delete();
+                }
+            }
+
+            $templates->each(function (WeeklyTaskTemplate $template) use ($weekStart): void {
+                $this->syncTemplateOccurrence($template, $weekStart);
+            });
         }, 3);
     }
 
@@ -144,47 +166,18 @@ class WeeklyTaskScheduler
         return $query->orderBy('id')->get();
     }
 
-    public function updateTemplateSnapshots(WeeklyTaskTemplate $template): bool
+    public function updateTemplateSnapshots(WeeklyTaskTemplate $template, ?CarbonImmutable $fromWeek = null): bool
     {
-        return DB::transaction(function () use ($template): bool {
-            $this->materializer->acquireTemplateSynchronizationLock();
-            $template->loadMissing('taskSession:id,name');
+        $start = ($fromWeek ?? $template->starts_on)->startOfWeek(CarbonImmutable::MONDAY);
+        $todayWeek = $this->dates->today()->startOfWeek(CarbonImmutable::MONDAY);
 
-            WeeklyTaskOccurrence::query()
-                ->where('weekly_task_template_id', $template->id)
-                ->where('status', 'pending')
-                ->whereDate('week_start', '>=', $this->dates->today()->startOfWeek()->toDateString())
-                ->get()
-                ->each(function (WeeklyTaskOccurrence $occurrence) use ($template): void {
-                    $newDue = $occurrence->week_start->addDays($template->due_weekday - 1);
-                    $dueChanged = ! $occurrence->original_due_date->isSameDay($newDue);
+        if ($start->lessThan($todayWeek)) {
+            $start = $todayWeek;
+        }
 
-                    if ($occurrence->task_session_id !== $template->task_session_id) {
-                        DB::table('checklist_item_positions')
-                            ->where('item_type', 'weekly')
-                            ->where('item_id', $occurrence->id)
-                            ->delete();
-                    }
+        $this->refreshMaterializedWeeksFrom($start);
 
-                    $changes = [
-                        'task_name' => $template->task_name,
-                        'task_session_id' => $template->task_session_id,
-                        'session_name' => $template->taskSession->name,
-                        'credit_hours' => $template->credit_hours,
-                        'original_due_date' => $newDue->toDateString(),
-                    ];
-
-                    if ($dueChanged) {
-                        $changes['scheduled_date'] = $newDue->toDateString();
-                        $changes['missed_reason'] = null;
-                        $occurrence->postponements()->delete();
-                    }
-
-                    $occurrence->forceFill($changes)->save();
-                });
-
-            return true;
-        }, 3);
+        return true;
     }
 
     public function refreshMaterializedWeeksFrom(CarbonImmutable $date): void
@@ -247,5 +240,60 @@ class WeeklyTaskScheduler
             ->whereDate('date', $date->toDateString())
             ->where('is_unavailable', true)
             ->exists();
+    }
+
+    private function syncTemplateOccurrence(WeeklyTaskTemplate $template, CarbonImmutable $weekStart): void
+    {
+        $template->loadMissing('taskSession:id,name');
+        $dueDate = $weekStart->addDays($template->due_weekday - 1);
+        $existing = WeeklyTaskOccurrence::query()
+            ->whereDate('week_start', $weekStart->toDateString())
+            ->where('weekly_task_template_id', $template->id)
+            ->first();
+
+        if ($existing === null) {
+            WeeklyTaskOccurrence::query()->create([
+                'week_start' => $weekStart->toDateString(),
+                'weekly_task_template_id' => $template->id,
+                'task_session_id' => $template->task_session_id,
+                'task_name' => $template->task_name,
+                'session_name' => $template->taskSession->name,
+                'credit_hours' => $template->credit_hours,
+                'original_due_date' => $dueDate->toDateString(),
+                'scheduled_date' => $dueDate->toDateString(),
+                'status' => 'pending',
+            ]);
+
+            return;
+        }
+
+        if ($existing->status !== 'pending') {
+            return;
+        }
+
+        $dueChanged = ! $existing->original_due_date->isSameDay($dueDate);
+
+        if ($existing->task_session_id !== $template->task_session_id) {
+            DB::table('checklist_item_positions')
+                ->where('item_type', 'weekly')
+                ->where('item_id', $existing->id)
+                ->delete();
+        }
+
+        $changes = [
+            'task_name' => $template->task_name,
+            'task_session_id' => $template->task_session_id,
+            'session_name' => $template->taskSession->name,
+            'credit_hours' => $template->credit_hours,
+            'original_due_date' => $dueDate->toDateString(),
+        ];
+
+        if ($dueChanged) {
+            $changes['scheduled_date'] = $dueDate->toDateString();
+            $changes['missed_reason'] = null;
+            $existing->postponements()->delete();
+        }
+
+        $existing->forceFill($changes)->save();
     }
 }

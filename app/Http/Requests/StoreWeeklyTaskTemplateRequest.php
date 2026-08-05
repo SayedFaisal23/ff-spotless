@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Http\Requests\Concerns\SanitizesPlainText;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class StoreWeeklyTaskTemplateRequest extends FormRequest
 {
@@ -16,7 +17,11 @@ class StoreWeeklyTaskTemplateRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge(['task_name' => $this->sanitizePlainText($this->input('task_name'))]);
+        $this->merge([
+            'task_name' => $this->sanitizePlainText($this->input('task_name')),
+            'applies_to_all_collections' => $this->boolean('applies_to_all_collections'),
+            'task_collection_ids' => array_values(array_filter((array) $this->input('task_collection_ids', []), static fn ($value) => $value !== null && $value !== '')),
+        ]);
     }
 
     public function rules(): array
@@ -24,9 +29,25 @@ class StoreWeeklyTaskTemplateRequest extends FormRequest
         return [
             'task_name' => ['bail', 'required', 'string', 'max:255'],
             'task_session_id' => ['bail', 'required', 'integer', 'exists:task_sessions,id'],
+            'applies_to_all_collections' => ['bail', 'required', 'boolean'],
+            'task_collection_ids' => ['bail', 'array'],
+            'task_collection_ids.*' => ['bail', 'integer', 'distinct', 'exists:task_collections,id'],
             'due_weekday' => ['bail', 'required', 'integer', 'between:1,7'],
             'credit_hours' => ['bail', 'required', 'numeric', 'min:0.25', 'max:24', 'decimal:0,2', 'multiple_of:0.25'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            if ($this->boolean('applies_to_all_collections')) {
+                return;
+            }
+
+            if (count((array) $this->input('task_collection_ids', [])) === 0) {
+                $validator->errors()->add('task_collection_ids', 'Choose at least one task collection, or select all collections.');
+            }
+        });
     }
 
     public function messages(): array
@@ -36,6 +57,9 @@ class StoreWeeklyTaskTemplateRequest extends FormRequest
             'task_name.max' => 'Task name must not exceed 255 characters.',
             'task_session_id.required' => 'Task session is required.',
             'task_session_id.exists' => 'Task session was not found.',
+            'task_collection_ids.array' => 'Task collections are invalid.',
+            'task_collection_ids.*.integer' => 'A task collection is invalid.',
+            'task_collection_ids.*.exists' => 'A task collection was not found.',
             'due_weekday.required' => 'Weekly due day is required.',
             'due_weekday.between' => 'Weekly due day is invalid.',
             'credit_hours.required' => 'Credit hours are required.',

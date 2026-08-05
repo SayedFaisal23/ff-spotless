@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WeeklyTaskTemplate extends Model
@@ -12,6 +13,8 @@ class WeeklyTaskTemplate extends Model
     protected $fillable = [
         'task_name',
         'task_session_id',
+        'task_collection_id',
+        'applies_to_all_collections',
         'due_weekday',
         'credit_hours',
         'sort_order',
@@ -22,6 +25,8 @@ class WeeklyTaskTemplate extends Model
     protected function casts(): array
     {
         return [
+            'task_collection_id' => 'integer',
+            'applies_to_all_collections' => 'boolean',
             'due_weekday' => 'integer',
             'credit_hours' => 'decimal:2',
             'sort_order' => 'integer',
@@ -38,6 +43,16 @@ class WeeklyTaskTemplate extends Model
     public function taskSession(): BelongsTo
     {
         return $this->belongsTo(TaskSession::class);
+    }
+
+    public function taskCollection(): BelongsTo
+    {
+        return $this->belongsTo(TaskCollection::class);
+    }
+
+    public function taskCollections(): BelongsToMany
+    {
+        return $this->belongsToMany(TaskCollection::class, 'weekly_task_template_task_collection');
     }
 
     public function occurrences(): HasMany
