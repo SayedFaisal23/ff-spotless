@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\ChecklistDayStatus;
 use App\Models\DailyChecklist;
+use App\Models\TaskCollection;
+use App\Models\TaskCollectionSchedule;
 use App\Models\TaskSession;
 use App\Models\TaskReopenAudit;
 use App\Models\TaskTemplate;
@@ -67,6 +69,8 @@ class ChecklistWorkflowTest extends TestCase
         $this->post(route('admin.templates.store'), [
             'task_name' => ' Mop lobi ',
             'task_session_id' => $session->id,
+            'applies_to_all_collections' => false,
+            'task_collection_ids' => [$this->defaultCollection()->id],
             'credit_hours' => 1.25,
         ])->assertRedirect(route('admin.index'));
 
@@ -77,6 +81,8 @@ class ChecklistWorkflowTest extends TestCase
         $this->post(route('admin.templates.store'), [
             'task_name' => 'Invalid credit',
             'task_session_id' => $session->id,
+            'applies_to_all_collections' => false,
+            'task_collection_ids' => [$this->defaultCollection()->id],
             'credit_hours' => 1.1,
         ])->assertSessionHasErrors('credit_hours');
     }
@@ -117,6 +123,8 @@ class ChecklistWorkflowTest extends TestCase
         $this->post(route('admin.weekly-templates.store'), [
             'task_name' => 'Cuci kipas',
             'task_session_id' => $session->id,
+            'applies_to_all_collections' => false,
+            'task_collection_ids' => [$this->defaultCollection()->id],
             'due_weekday' => 5,
             'credit_hours' => 2.5,
         ])->assertRedirect(route('admin.index'));
@@ -130,6 +138,8 @@ class ChecklistWorkflowTest extends TestCase
         $this->patch(route('admin.weekly-templates.update', $template), [
             'task_name' => 'Cuci semua kipas',
             'task_session_id' => $session->id,
+            'applies_to_all_collections' => false,
+            'task_collection_ids' => [$this->defaultCollection()->id],
             'due_weekday' => 6,
             'credit_hours' => 3,
         ])->assertRedirect(route('admin.index'));
@@ -137,6 +147,126 @@ class ChecklistWorkflowTest extends TestCase
 
         $this->delete(route('admin.weekly-templates.destroy', $template))->assertRedirect(route('admin.index'));
         $this->assertFalse($template->refresh()->is_active);
+    }
+
+    public function test_admin_can_delete_an_unused_non_default_collection(): void
+    {
+        $this->loginAdmin();
+        $collection = TaskCollection::query()->create([
+            'name' => 'Collection C',
+            'is_default' => false,
+        ]);
+
+        $this->delete(route('admin.collections.destroy', $collection))
+            ->assertRedirect(route('admin.index'));
+
+        $this->assertDatabaseMissing('task_collections', [
+            'id' => $collection->id,
+        ]);
+    }
+
+    public function test_admin_cannot_delete_default_or_used_collection(): void
+    {
+        $this->loginAdmin();
+        $defaultCollection = $this->defaultCollection();
+        $usedCollection = TaskCollection::query()->create([
+            'name' => 'Collection D',
+            'is_default' => false,
+        ]);
+
+        $template = TaskTemplate::query()->create([
+            'task_name' => 'Used daily',
+            'task_session_id' => $this->taskSession()->id,
+            'task_collection_id' => $usedCollection->id,
+            'applies_to_all_collections' => false,
+            'credit_hours' => 1,
+            'sort_order' => 1,
+            'is_active' => true,
+        ]);
+        $template->taskCollections()->sync([$usedCollection->id]);
+
+        $this->delete(route('admin.collections.destroy', $defaultCollection))
+            ->assertSessionHasErrors('collection');
+
+        $this->delete(route('admin.collections.destroy', $usedCollection))
+            ->assertSessionHasErrors('collection');
+
+        $this->assertDatabaseHas('task_collections', [
+            'id' => $defaultCollection->id,
+        ]);
+        $this->assertDatabaseHas('task_collections', [
+            'id' => $usedCollection->id,
+        ]);
+    }
+
+    public function test_collection_schedule_switches_daily_and_weekly_tasks_by_date_range(): void
+    {
+        $session = $this->taskSession();
+        $defaultCollection = $this->defaultCollection();
+        $alt = TaskCollection::query()->create([
+            'name' => 'Collection B',
+            'is_default' => false,
+        ]);
+
+        $defaultWeekly = WeeklyTaskTemplate::query()->create([
+            'task_name' => 'Default weekly',
+            'task_session_id' => $session->id,
+            'task_collection_id' => $defaultCollection->id,
+            'applies_to_all_collections' => false,
+            'due_weekday' => 5,
+            'credit_hours' => 2,
+            'sort_order' => 1,
+            'starts_on' => '2026-07-13',
+            'is_active' => true,
+        ]);
+        $defaultWeekly->taskCollections()->sync([$defaultCollection->id]);
+
+        $defaultDaily = TaskTemplate::query()->create([
+            'task_name' => 'Default daily',
+            'task_session_id' => $session->id,
+            'task_collection_id' => $defaultCollection->id,
+            'applies_to_all_collections' => false,
+            'credit_hours' => 1,
+            'sort_order' => 1,
+            'is_active' => true,
+        ]);
+        $defaultDaily->taskCollections()->sync([$defaultCollection->id]);
+
+        $altWeekly = WeeklyTaskTemplate::query()->create([
+            'task_name' => 'Collection B weekly',
+            'task_session_id' => $session->id,
+            'task_collection_id' => $alt->id,
+            'applies_to_all_collections' => false,
+            'due_weekday' => 5,
+            'credit_hours' => 2,
+            'sort_order' => 2,
+            'starts_on' => '2026-08-03',
+            'is_active' => true,
+        ]);
+        $altWeekly->taskCollections()->sync([$alt->id]);
+
+        $altDaily = TaskTemplate::query()->create([
+            'task_name' => 'Collection B daily',
+            'task_session_id' => $session->id,
+            'task_collection_id' => $alt->id,
+            'applies_to_all_collections' => false,
+            'credit_hours' => 1,
+            'sort_order' => 2,
+            'is_active' => true,
+        ]);
+        $altDaily->taskCollections()->sync([$alt->id]);
+
+        TaskCollectionSchedule::query()->create([
+            'task_collection_id' => $alt->id,
+            'starts_on' => '2026-08-03',
+            'ends_on' => '2026-08-09',
+        ]);
+
+        $workflow = app(\App\Services\ChecklistWorkflow::class);
+        $items = $workflow->forDate(CarbonImmutable::parse('2026-08-07', 'Asia/Kuala_Lumpur'));
+
+        $this->assertSame(['Collection B daily'], $items['daily']->pluck('task_name')->all());
+        $this->assertSame(['Collection B weekly'], $items['weekly']->pluck('task_name')->all());
     }
 
     public function test_weekly_task_is_available_early_then_rolls_and_misses_after_sunday(): void
@@ -290,29 +420,6 @@ class ChecklistWorkflowTest extends TestCase
         ])->assertRedirect(route('checklist.index', ['date' => $date]));
         $this->assertTrue($task->refresh()->is_completed);
         $this->assertSame('Area was cleaned after the correction.', $task->completion_note);
-    }
-
-    public function test_admin_dashboard_lists_overdue_daily_and_weekly_tasks(): void
-    {
-        $today = app(OperationalDate::class)->today();
-        $this->dailyTask('Overdue daily', $today->subDay()->toDateString());
-        $template = $this->weeklyTemplate('Overdue weekly', dueWeekday: 1);
-        app(WeeklyTaskScheduler::class)->materializeWeek($today);
-        WeeklyTaskOccurrence::query()
-            ->where('weekly_task_template_id', $template->id)
-            ->sole()
-            ->forceFill([
-                'status' => 'missed',
-                'missed_reason' => 'incomplete',
-                'scheduled_date' => $today->subDay(),
-            ])->save();
-
-        $this->loginAdmin();
-        $this->get(route('admin.index'))
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('overdueTasks', 2)
-                ->where('overdueTasks.0.taskText', 'Overdue daily')
-                ->where('overdueTasks.1.taskText', 'Overdue weekly'));
     }
 
     public function test_completed_day_cannot_be_marked_unavailable(): void
@@ -498,26 +605,43 @@ class ChecklistWorkflowTest extends TestCase
 
     private function dailyTemplate(string $name, string $session = 'Pagi', float $credits = 1): TaskTemplate
     {
-        return TaskTemplate::query()->create([
+        $template = TaskTemplate::query()->create([
             'task_name' => $name,
             'task_session_id' => $this->taskSession($session)->id,
+            'task_collection_id' => $this->defaultCollection()->id,
+            'applies_to_all_collections' => false,
             'credit_hours' => $credits,
             'sort_order' => (int) TaskTemplate::query()->max('sort_order') + 1,
             'is_active' => true,
         ]);
+
+        $template->taskCollections()->sync([$this->defaultCollection()->id]);
+
+        return $template;
     }
 
     private function weeklyTemplate(string $name, int $dueWeekday): WeeklyTaskTemplate
     {
-        return WeeklyTaskTemplate::query()->create([
+        $template = WeeklyTaskTemplate::query()->create([
             'task_name' => $name,
             'task_session_id' => $this->taskSession()->id,
+            'task_collection_id' => $this->defaultCollection()->id,
+            'applies_to_all_collections' => false,
             'due_weekday' => $dueWeekday,
             'credit_hours' => 2,
             'sort_order' => (int) WeeklyTaskTemplate::query()->max('sort_order') + 1,
             'starts_on' => app(OperationalDate::class)->today()->startOfWeek()->toDateString(),
             'is_active' => true,
         ]);
+
+        $template->taskCollections()->sync([$this->defaultCollection()->id]);
+
+        return $template;
+    }
+
+    private function defaultCollection(): TaskCollection
+    {
+        return TaskCollection::query()->where('is_default', true)->sole();
     }
 
     private function dailyTask(string $name = 'Clean entrance glass', ?string $date = null): DailyChecklist

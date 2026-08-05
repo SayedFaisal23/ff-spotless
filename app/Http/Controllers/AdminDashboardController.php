@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\ChecklistDateOutsideMaterializationWindow;
 use App\Http\Requests\AdminHistoryRequest;
+use App\Models\TaskCollection;
+use App\Models\TaskCollectionSchedule;
 use App\Models\TaskTemplate;
 use App\Models\WeeklyTaskTemplate;
 use App\Services\ChecklistWorkflow;
@@ -44,15 +46,26 @@ class AdminDashboardController extends Controller
 
         $templates = TaskTemplate::query()
             ->active()
-            ->with('taskSession:id,name')
+            ->with(['taskSession:id,name', 'taskCollections:id,name'])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
 
         $weeklyTemplates = WeeklyTaskTemplate::query()
             ->active()
-            ->with('taskSession:id,name')
+            ->with(['taskSession:id,name', 'taskCollections:id,name'])
             ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $collections = TaskCollection::query()
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get();
+
+        $collectionSchedules = TaskCollectionSchedule::query()
+            ->with('taskCollection:id,name,is_default')
+            ->orderBy('starts_on')
             ->orderBy('id')
             ->get();
 
@@ -61,6 +74,8 @@ class AdminDashboardController extends Controller
             $date,
             $templates,
             $weeklyTemplates,
+            $collections,
+            $collectionSchedules,
             $checklist,
             $statistics->build($from, $to),
         ));

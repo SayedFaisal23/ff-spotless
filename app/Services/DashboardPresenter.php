@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\ChecklistDayStatus;
 use App\Models\ChecklistItemPosition;
 use App\Models\DailyChecklist;
+use App\Models\TaskCollection;
+use App\Models\TaskCollectionSchedule;
 use App\Models\TaskSession;
 use App\Models\TaskReopenAudit;
 use App\Models\TaskTemplate;
@@ -46,6 +48,8 @@ class DashboardPresenter
         CarbonImmutable $date,
         Collection $templates,
         Collection $weeklyTemplates,
+        Collection $collections,
+        Collection $collectionSchedules,
         array $checklist,
         array $statistics,
     ): array {
@@ -53,21 +57,40 @@ class DashboardPresenter
         $props['templates'] = $templates->map(static fn (TaskTemplate $template): array => [
             'id' => $template->id,
             'taskName' => $template->task_name,
+            'type' => 'daily',
             'sessionId' => $template->task_session_id,
             'sessionName' => $template->taskSession->name,
+            'appliesToAllCollections' => $template->applies_to_all_collections,
+            'collectionIds' => $template->taskCollections->pluck('id')->values()->all(),
+            'collectionNames' => $template->taskCollections->pluck('name')->values()->all(),
             'creditHours' => (float) $template->credit_hours,
         ])->values()->all();
         $props['weeklyTemplates'] = $weeklyTemplates->map(static fn (WeeklyTaskTemplate $template): array => [
             'id' => $template->id,
             'taskName' => $template->task_name,
+            'type' => 'weekly',
             'sessionId' => $template->task_session_id,
             'sessionName' => $template->taskSession->name,
+            'appliesToAllCollections' => $template->applies_to_all_collections,
+            'collectionIds' => $template->taskCollections->pluck('id')->values()->all(),
+            'collectionNames' => $template->taskCollections->pluck('name')->values()->all(),
             'dueWeekday' => $template->due_weekday,
             'creditHours' => (float) $template->credit_hours,
             'startsOn' => $template->starts_on->toDateString(),
         ])->values()->all();
+        $props['collections'] = $collections->map(static fn (TaskCollection $collection): array => [
+            'id' => $collection->id,
+            'name' => $collection->name,
+            'isDefault' => $collection->is_default,
+        ])->values()->all();
+        $props['collectionSchedules'] = $collectionSchedules->map(static fn (TaskCollectionSchedule $schedule): array => [
+            'id' => $schedule->id,
+            'collectionId' => $schedule->task_collection_id,
+            'collectionName' => $schedule->taskCollection?->name ?? 'General',
+            'startsOn' => $schedule->starts_on->toDateString(),
+            'endsOn' => $schedule->ends_on->toDateString(),
+        ])->values()->all();
         $props['completedTasks'] = $this->historyItems($date, $checklist);
-        $props['overdueTasks'] = $this->overdueTasks();
         $props['reopenAudits'] = $this->reopenAudits();
         $props['statistics'] = $statistics;
         $props['workload'] = $this->workload($templates, $weeklyTemplates);
@@ -197,51 +220,6 @@ class DashboardPresenter
     /**
      * @return list<array<string, mixed>>
      */
-    private function overdueTasks(): array
-    {
-        $today = $this->dates->today();
-        $daily = DailyChecklist::query()
-            ->whereDate('date', '<', $today->toDateString())
-            ->where('is_completed', false)
-            ->when(Schema::hasTable('checklist_day_statuses'), function ($query): void {
-                $query->whereNotIn('date', ChecklistDayStatus::query()
-                    ->where('is_unavailable', true)
-                    ->select('date'));
-            })
-            ->orderBy('date')
-            ->limit(50)
-            ->get()
-            ->map(static fn (DailyChecklist $task): array => [
-                'key' => 'daily:'.$task->id,
-                'type' => 'daily',
-                'id' => $task->id,
-                'taskText' => $task->task_name,
-                'sessionName' => $task->session_name,
-                'date' => $task->date->toDateString(),
-                'detail' => 'Daily task not completed',
-            ]);
-
-        $weekly = WeeklyTaskOccurrence::query()
-            ->where('status', 'missed')
-            ->orderBy('scheduled_date')
-            ->limit(50)
-            ->get()
-            ->map(static fn (WeeklyTaskOccurrence $task): array => [
-                'key' => 'weekly:'.$task->id,
-                'type' => 'weekly',
-                'id' => $task->id,
-                'taskText' => $task->task_name,
-                'sessionName' => $task->session_name,
-                'date' => $task->scheduled_date->toDateString(),
-                'detail' => $task->missed_reason === 'unavailable' ? 'Weekly task unavailable' : 'Weekly task missed',
-            ]);
-
-        return $daily->concat($weekly)->sortBy('date')->take(50)->values()->all();
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
     private function reopenAudits(): array
     {
         return TaskReopenAudit::query()
@@ -299,8 +277,9 @@ class DashboardPresenter
             ],
             'templates' => [],
             'weeklyTemplates' => [],
+            'collections' => [],
+            'collectionSchedules' => [],
             'completedTasks' => [],
-            'overdueTasks' => [],
             'reopenAudits' => [],
             'statistics' => null,
             'workload' => [],

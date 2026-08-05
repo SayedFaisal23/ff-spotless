@@ -33,12 +33,20 @@ class WeeklyTaskTemplateController extends Controller
             ? $today->startOfWeek()
             : $today->addWeek()->startOfWeek();
 
-        WeeklyTaskTemplate::query()->create([
-            ...$data,
+        $collectionIds = $data['applies_to_all_collections'] ? [] : array_values(array_unique($data['task_collection_ids'] ?? []));
+
+        $template = WeeklyTaskTemplate::query()->create([
+            'task_name' => $data['task_name'],
+            'task_session_id' => $data['task_session_id'],
+            'task_collection_id' => $collectionIds[0] ?? null,
+            'applies_to_all_collections' => $data['applies_to_all_collections'],
+            'due_weekday' => $data['due_weekday'],
+            'credit_hours' => $data['credit_hours'],
             'sort_order' => (int) WeeklyTaskTemplate::query()->max('sort_order') + 1,
             'starts_on' => $startsOn->toDateString(),
             'is_active' => true,
         ]);
+        $template->taskCollections()->sync($collectionIds);
 
         $scheduler->materializeWeek($startsOn, true);
         $scheduler->refreshMaterializedWeeksFrom($startsOn);
@@ -61,7 +69,17 @@ class WeeklyTaskTemplateController extends Controller
             throw ValidationException::withMessages(['task' => 'Weekly template or session is not active.']);
         }
 
-        $weeklyTaskTemplate->forceFill($data)->save();
+        $collectionIds = $data['applies_to_all_collections'] ? [] : array_values(array_unique($data['task_collection_ids'] ?? []));
+
+        $weeklyTaskTemplate->forceFill([
+            'task_name' => $data['task_name'],
+            'task_session_id' => $data['task_session_id'],
+            'task_collection_id' => $collectionIds[0] ?? null,
+            'applies_to_all_collections' => $data['applies_to_all_collections'],
+            'due_weekday' => $data['due_weekday'],
+            'credit_hours' => $data['credit_hours'],
+        ])->save();
+        $weeklyTaskTemplate->taskCollections()->sync($collectionIds);
         $scheduler->updateTemplateSnapshots($weeklyTaskTemplate);
 
         return to_route('admin.index');
