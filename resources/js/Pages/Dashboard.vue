@@ -74,11 +74,11 @@ const taskListFilters = ref({
 });
 const adminTabs = [
     { key: 'statistics', label: 'Dashboard' },
-    { key: 'tasks', label: 'Manage Tasks' },
-    { key: 'collections', label: 'Task Collections' },
-    { key: 'sessions', label: 'Work Sessions' },
-    { key: 'history', label: 'Completed Tasks' },
+    { key: 'history', label: 'View History' },
     { key: 'audit', label: 'Audit Log' },
+    { key: 'sessions', label: 'Session Editor' },
+    { key: 'weekly', label: 'Weekly Task Editor' },
+    { key: 'daily', label: 'Daily Task Editor' },
 ];
 
 const activeSessions = computed(() => props.sessions.filter((session) => session.isActive));
@@ -725,6 +725,11 @@ function completeTask() {
         ...inertiaOptions('Tugasan selesai dengan bukti foto.', 'Tugasan tidak dapat diselesaikan.', () => closeEvidence(true)),
         forceFormData: true,
     });
+}
+
+function viewOverdue(task) {
+    adminTab.value = 'history';
+    openAdmin(task.date);
 }
 
 function openReopen(task) {
